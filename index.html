@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Edge Lift Designer</title>
+  <meta name="description" content="Design a 3D-printable finger-strength lift edge sized to your hand. Exports STL and 3MF for PrusaSlicer, Bambu Studio and OrcaSlicer. Everything stays on your device.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header>
+    <h1>Edge Lift Designer</h1>
+    <p class="sub">A lift edge sized to your hand, ready to print. Your measurements stay on this device.</p>
+    <label class="layout-pick">Layout <select id="layoutPick">
+      <option value="auto">auto</option><option value="cols">columns</option><option value="rows">rows</option>
+    </select></label>
+  </header>
+
+  <main>
+    <section id="controls" aria-label="Design parameters">
+      <details class="card start" id="startCard" open>
+        <summary>Start here</summary>
+        <ol>
+          <li><b>Measure your hand</b> (Hand): P1 per finger from a photo or a ruler. One hand gives one stepped edge, both hands a stepped edge each.</li>
+          <li><b>Set the edge</b> (Edge): depth and front radius like a hangboard edge; the pocket height is room for the curled fingers.</li>
+          <li><b>Check the strength</b> (below the 3D view): safety factor at least 2 at your heaviest pull. Warnings appear under the plate.</li>
+          <li><b>Export</b> STL or 3MF and print it flat, pocket up, no supports. Hover over a control to see what it changes.</li>
+        </ol>
+      </details>
+    </section>
+
+    <section id="views">
+      <div id="stage">
+        <div class="card">
+          <div class="card-head">
+            <h2>Plate</h2>
+            <span class="hint">as held for a lift, open side towards you: fingers into the pocket, pads up on the top edge</span>
+          </div>
+          <svg id="plate" role="img" aria-label="The plate with its pocket and the edge step per finger"></svg>
+        <div id="plateStatus" class="plate-status" aria-live="polite"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2>Print preview</h2>
+            <span class="hint">as printed: flat on the bed · drag to turn, wheel to zoom</span>
+          </div>
+          <canvas id="view3d" aria-label="3D preview of the part on the print bed"></canvas>
+          <label class="inline"><input type="checkbox" id="showZones" checked> show denser-infill zones</label>
+        </div>
+
+      </div>
+      <div id="details">
+        <div class="card">
+          <div class="card-head">
+            <h2>Edge section</h2>
+            <span class="hint">cut through the edge bar and the pocket floor at the middle finger</span>
+          </div>
+          <svg id="section" role="img" aria-label="Section through the edge bar showing the edge rounding"></svg>
+        </div>
+
+        <div class="card" id="results"></div>
+
+        <div class="card">
+          <h2>Export</h2>
+          <div class="buttons">
+            <button id="dlStl">STL</button>
+            <button id="dlPrusa">3MF · PrusaSlicer</button>
+            <button id="dlOrca">3MF · OrcaSlicer</button>
+          </div>
+          <div class="buttons">
+            <label class="inline">Bambu printer <select id="bambuPrinter"></select></label>
+            <button id="dlBambu">3MF · Bambu Studio</button>
+          </div>
+          <p class="note">The STL is the plain part: slice it however you like. The 3MF files also carry
+            layer height, walls, infill and top/bottom layers, plus the denser-infill zones as modifiers if you switch them on.
+            PrusaSlicer and OrcaSlicer keep your current printer, nozzle and filament. Bambu Studio only applies the settings
+            when the file names its printer presets, so pick your Bambu printer; the nozzle follows the app's nozzle setting.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="photoDialog">
+    <form method="dialog" class="photo-head">
+      <h2>Measure from a photo</h2>
+      <button value="cancel" aria-label="Close">✕</button>
+    </form>
+    <ol class="steps">
+      <li><b>Half fist (best for P1 and knuckle offsets):</b> bend the knuckles and the middle joints to 90°, rest the middle finger segments on the table and photograph the back of the hand straight from above. Tips: mark the top of each knuckle and each middle joint with a pen dot first; hold the phone flat and straight above the knuckles (a tilted camera shortens the fingers unevenly); put the ruler at knuckle height, pointing along the fingers (on a book or box), otherwise the scale is off by about 10–15%.</li>
+      <li><b>Palm, flat (for the finger widths):</b> hand flat, palm up, ruler on the table next to it.</li>
+      <li>Click two marks on the ruler and enter their distance, then the points the step line below asks for, index to little.</li>
+    </ol>
+    <p class="note"><b>Detect hand</b> places the knuckles, middle joints and end-joint widths automatically (MediaPipe, runs on this device); check and drag them, and click the ruler marks yourself. The edge steps use the differences between fingers, so a constant offset in where you click does not matter. Values you don't measure stay as they are in the table.</p>
+    <div class="photo-tools">
+      <input type="file" id="photoFile" accept="image/*">
+      <label>Hand <select id="photoHand"><option value="R">right</option><option value="L">left</option></select></label>
+      <label>Photo shows <select id="photoSide"><option value="fist">half fist, from above</option><option value="palm">palm, flat</option><option value="back">back of the hand, flat</option></select></label>
+      <label>Ruler distance <input type="number" id="rulerMm" value="100" min="1" step="1"> mm</label>
+      <label>Zoom <input type="range" id="photoZoom" min="0.1" max="3" step="0.05" value="1"></label>
+      <button type="button" id="photoDetect">Detect hand</button>
+      <button type="button" id="photoUndo" class="secondary">Undo point</button>
+      <button type="button" id="photoReset" class="secondary">Clear points</button>
+    </div>
+    <div class="photo-wrap"><canvas id="photoCanvas"></canvas></div>
+    <p id="photoStatus" class="note">Load a photo to start. It is only read by this page and never uploaded.</p>
+    <div class="buttons">
+      <button type="button" id="photoUse" disabled>Use these measurements</button>
+    </div>
+  </dialog>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

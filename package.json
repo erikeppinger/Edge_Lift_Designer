@@ -1,0 +1,11 @@
+{
+  "name": "edge-lift-designer",
+  "private": true,
+  "type": "module",
+  "description": "Browser tool that designs a 3D-printable finger-strength lift edge from hand measurements and exports STL / 3MF.",
+  "scripts": {
+    "start": "node tools/serve.mjs 8095",
+    "test": "node --test \"tests/*.test.mjs\"",
+    "fuzz": "node tools/fuzz.mjs 400"
+  }
+}

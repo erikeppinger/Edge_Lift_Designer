@@ -1,0 +1,10 @@
+.local/
+node_modules/
+.claude/
+# local test output
+samples/
+slice-check/
+out/
+rt2/
+orca.log
+result.json
