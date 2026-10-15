@@ -158,7 +158,7 @@ export function loft(levels, { bottom = true, top = true, floorLoop = null, weld
   const pos = [];
   const ringIdx = levels.map((lv) => lv.loops.map((loop, li) => {
     // A loop may bring its own exact offset (ringAt), e.g. the stepped pocket outline.
-    const ring = loop.ringAt ? loop.ringAt(offOf(lv, li)) : roundedRing(loop, offOf(lv, li), plans[li]);
+    const ring = loop.ringAt ? loop.ringAt(offOf(lv, li), lv.z) : roundedRing(loop, offOf(lv, li), plans[li]);
     // Fillets that meet exactly (e.g. a round hole end) give repeated points: share one vertex.
     const same = (a, b) => Math.abs(a.x - b.x) < 1e-9 && Math.abs(a.y - b.y) < 1e-9;
     const ids = [];

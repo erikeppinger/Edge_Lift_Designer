@@ -126,3 +126,31 @@ test("side bar tension = (F/2) / ((side bar − hole width) · T)", () => {
   close(s.sections[1].stress, 981 / 2 / ((p.sideBar - 2 * plan.holeHalf) * plan.T), 1e-9);
   assert.ok(plan.holeHalf > p.cordDia / 2); // the teardrop is wider than the cord
 });
+
+test("hole position: holeX moves both holes outwards, holeY along the side bar, refused when it leaves the bar", () => {
+  const base = framePlan(DEFAULTS), moved = framePlan({ ...DEFAULTS, holeX: 2, holeY: -5 });
+  close(moved.slotX[0], base.slotX[0] - 2, 1e-9);
+  close(moved.slotX[1], base.slotX[1] + 2, 1e-9);
+  close(moved.slotY, base.slotY - 5, 1e-9);
+  const m = buildModel({ ...DEFAULTS, holeX: 2, holeY: -5 });
+  assert.equal(m.stats.badEdges, 0);
+  assert.ok(m.strength.span > buildModel(DEFAULTS).strength.span); // holes further apart: longer beam
+  assert.throws(() => framePlan({ ...DEFAULTS, holeX: 6 }), /Move the holes back/);
+});
+
+test("rounded cord exit: closed mesh, hole wider at the faces only at the load end", () => {
+  const p = { ...DEFAULTS, cordExit: 3 };
+  const m = buildModel(p);
+  assert.equal(m.stats.badEdges, 0);
+  assert.ok(m.stats.volume < buildModel(DEFAULTS).stats.volume);
+  const plan = framePlan(p), hole = plan.below[0].loops[1], T = plan.T, cy = plan.slotY;
+  const tipY = (z) => Math.min(...hole.ringAt(0, z).map((q) => q.y)), topY = (z) => Math.max(...hole.ringAt(0, z).map((q) => q.y));
+  close(tipY(T / 2) - tipY(T), 3, 0.05); // the tip end opens by the exit radius at the top face
+  close(tipY(T / 2) - tipY(0), 3, 0.05); // and by a 45° chamfer of the same size at the bed
+  close(topY(T), topY(T / 2), 0.05); // the round end stays as it was
+  assert.ok(cy > tipY(T / 2));
+  for (const v of [{ hands: 2 }, { slotShape: "plain" }, { slotShape: "plain", hands: 2 }, { cordExit: 6, floorThick: 2, edgeDepth: 12 }]) {
+    const q = buildModel({ ...p, ...v });
+    assert.equal(q.stats.badEdges, 0, JSON.stringify(v));
+  }
+});

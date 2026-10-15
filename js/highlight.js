@@ -8,7 +8,7 @@ const BIG = 1e4;
 
 export function highlightTriangles(model, params, key) {
   const pl = model.plan, off = model.offset;
-  const { Ww, Hw, sb, T, F } = pl;
+  const { Ww, sb, T, F } = pl;
   const yTopMin = Math.min(...pl.segs.map(pl.yTop)), yBotMax = Math.max(...pl.botSegs.map(pl.yBot));
   const winBotMin = Math.min(...pl.botSegs.map(pl.yBot));
   const midY = (yTopMin + yBotMax) / 2;
@@ -29,7 +29,7 @@ export function highlightTriangles(model, params, key) {
   const outerWall = (t) => Math.abs(t.nz) < 0.98 && !inPocketBand(t)
     && (t.x < -sb + 0.5 || t.x > Ww + sb - 0.5 || t.y > pl.yOuterTop - dip || t.y < pl.yOuterBot + dip);
   const holeWall = (t) => Math.abs(t.nz) < 0.98 && pl.slotX.some((sx) => Math.abs(t.x - sx) < pl.holeHalf + 1)
-    && Math.abs(t.y - Hw / 2) < params.slotLength / 2 + 2;
+    && Math.abs(t.y - pl.slotY) < params.slotLength / 2 + 2;
   const chamfer = (t) => Math.abs(t.nz) > 0.3 && Math.abs(t.nz) < 0.95 && (t.z < c + 0.01 || t.z > T - c - 0.01) && !pocketWall(t);
   const corners = [[0, pl.yTop(pl.segs[0])], [Ww, pl.yTop(pl.segs.at(-1))], [0, pl.yBot(pl.botSegs[0])], [Ww, pl.yBot(pl.botSegs.at(-1))]];
 
@@ -46,7 +46,7 @@ export function highlightTriangles(model, params, key) {
     barThick: topFace, sideBar: topFace,
     bow: (t) => outerWall(t) && (t.y > pl.yOuterTop - dip || (pl.two && t.y < pl.yOuterBot + dip)) && t.x > -sb + params.outerRadius && t.x < Ww + sb - params.outerRadius,
     outerRadius: (t) => outerWall(t) && (t.x < -sb + params.outerRadius + 0.5 || t.x > Ww + sb - params.outerRadius - 0.5),
-    slotShape: holeWall, cordDia: holeWall, slotLength: holeWall,
+    slotShape: holeWall, cordDia: holeWall, slotLength: holeWall, holeX: holeWall, holeY: holeWall, cordExit: holeWall,
     chamferLayers: chamfer, layerHeight: chamfer,
   };
   // the areas those top-face selections are cut to (plan coordinates: x0, x1, y0, y1)

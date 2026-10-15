@@ -35,7 +35,10 @@ export const ICONS = {
   slotShape: svg(`<path class="p" d="M14 6A5 5 0 0 1 19 11L15.5 26Q14 28 12.5 26L9 11A5 5 0 0 1 14 6Z"/>
     <path class="a" d="M34 4Q39 16 34 28Q29 16 34 4Z"/>`),
   cordDia: svg(`<circle class="p" cx="24" cy="16" r="9"/>${arrowH(16, 15.5, 32.5)}`),
+  holeX: svg(`${PLATE}${POCKET}<path class="p dash" d="M6.5 11V21"/><path class="a" d="M5 12Q6.5 9 8 12L6.5 21Z"/>${arrowH(26, 2.5, 10.5)}`),
+  holeY: svg(`${PLATE}${POCKET}<path class="p dash" d="M6.5 11V21"/><path class="a" d="M5 9Q6.5 6 8 9L6.5 18Z"/>${arrowV(41, 6, 26)}`),
   slotLength: svg(`<path class="p" d="M24 4Q29 16 24 28Q19 16 24 4Z"/>${arrowV(34, 4, 28)}`),
+  cordExit: svg(`<path class="p" d="M6 4H18V28H6M42 4H30V28H42"/><path class="a" d="M18 21A7 7 0 0 0 11 28M30 21A7 7 0 0 1 37 28"/><path class="p dash" d="M24 2V30"/>`),
   chamferLayers: svg(`<path class="p" d="M6 28H36L42 22V4"/><path class="p dash" d="M6 25H39M6 22H42"/><path class="a" d="M36 28L42 22"/>`),
   layerHeight: svg(`<path class="p" d="M6 10H42M6 16H42M6 22H42"/>${arrowV(44, 16, 22)}`),
   nozzle: svg(`<path class="p" d="M14 4H34V14L27 24H21L14 14Z"/><path class="a" d="M21 28H27"/>`),

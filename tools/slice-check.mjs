@@ -29,6 +29,8 @@ const cases = [
   ["fine-layers", { layerHeight: 0.05, chamferLayers: 8 }],
   ["big-nozzle", { nozzle: 0.8, layerHeight: 0.4, chamferLayers: 2 }],
   ["dense-zones", { denseZones: true, zoneInfill: 80, zonePattern: "cubic" }],
+  ["cord-exit", { cordExit: 4, holeX: 1.5, holeY: -6 }],
+  ["cord-exit-lens", { cordExit: 3, hands: 2, holeY: 4 }],
   ["wide-hand", { wIndexR: 30, wMiddleR: 30, wRingR: 30, wLittleR: 30, sideMargin: 20 }],
 ];
 for (let i = 0; i < Number(nArg); i++) {

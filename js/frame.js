@@ -44,6 +44,9 @@ export const DEFAULTS = {
   slotShape: "auto", // auto: teardrop with one edge, lens with two; teardrop; lens; plain
   cordDia: 6,
   slotLength: 26,
+  holeX: 0, // shifts both holes from the middle of the side bar: + outwards, − towards the pocket
+  holeY: 0, // shifts both holes along the side bar: + towards the top edge, − towards the bottom
+  cordExit: 0, // rounded cord exit: extra edge rounding at the hole's load end(s), 0 = off
   // printing
   nozzle: 0.4,
   layerHeight: 0.2,
@@ -156,13 +159,34 @@ export function slotShapeOf(p) {
 
 // Cord hole centred at (cx, cy), long axis along y. Teardrop: round end up, narrow end towards the
 // load (down in a lift). Lens: pointed at both ends, for a plate used either way up.
+// The tip roundings sit well inside the sharp construction points (in a narrow wedge a small
+// radius moves far up), so the construction length is stretched until the rounded hole is as long
+// as asked for (the slot is centred on cy, the teardrop's tip end at cy − length/2). The lens's
+// side roundings eat into its width the same way: it is widened until the cord (+1 mm) passes.
 function slot(p, cx, cy) {
-  const L = p.slotLength, sw = p.cordDia + 1;
+  const L = p.slotLength, W = p.cordDia + 1, lens = slotShapeOf(p) === "lens";
+  const span = (loop) => {
+    const r = roundedRing(loop, 0, segmentPlan(loop, 0)), ys = r.map((q) => q.y), xs = r.map((q) => q.x);
+    return { y0: Math.min(...ys), y1: Math.max(...ys), w: Math.max(...xs) - Math.min(...xs) };
+  };
+  let Ls = L, Ws = W, loop = slotOutline(p, cx, cy, Ls, Ws);
+  for (let i = 0; i < 12; i++) {
+    const s = span(loop), dl = L - (s.y1 - s.y0), dw = lens ? W - s.w : 0;
+    if (Math.abs(dl) < 0.01 && Math.abs(dw) < 0.01) break;
+    Ls = Math.max(W, Ls + dl);
+    Ws += dw;
+    loop = slotOutline(p, cx, cy, Ls, Ws);
+  }
+  const s = span(loop), dy = cy - (s.y0 + s.y1) / 2;
+  return loop.map((q) => ({ ...q, y: q.y + dy }));
+}
+
+function slotOutline(p, cx, cy, L, sw) {
   const tipR = Math.max(0.5, p.cordDia * 0.3);
   const shape = slotShapeOf(p);
   if (shape === "teardrop") {
     const R = sw / 2 + 0.5;
-    const toTip = L - R; // round end centre to the tip
+    const toTip = Math.max(L - R, R / 0.95); // round end centre to the tip
     const wedge = 2 * Math.asin(Math.min(0.95, R / toTip));
     return teardrop(cx, cy + L / 2 - R, R, tipR, wedge); // counter-clockwise, tip at −y
   }
@@ -179,6 +203,46 @@ function slot(p, cx, cy) {
   }
   const r = sw / 2 - 0.01;
   return [{ x: cx - sw / 2, y: cy - L / 2, r }, { x: cx + sw / 2, y: cy - L / 2, r }, { x: cx + sw / 2, y: cy + L / 2, r }, { x: cx - sw / 2, y: cy + L / 2, r }];
+}
+
+// Rounded cord exit: the cord bends over the hole's edge at the load end, so that edge gets a
+// larger rounding than the rest of the hole, fading out towards the other end. The wedge walls
+// inside the hole stay straight and still grip the cord. Top face: a quarter round of radius e.
+// Bed face: a 45° chamfer of the same size instead (a round there would overhang).
+// The hole outline is sampled once (fine enough for the fade) and each level moves its points
+// outwards by max(chamfer, weight · exit offset); the hole is convex, so the rings stay simple.
+function exitRinger(hole, cy, L, twoSided, e, T) {
+  const plan = segmentPlan(hole, e + 1);
+  const raw = roundedRing(hole, 0, plan), base = [];
+  raw.forEach((q, i) => {
+    const prev = raw[(i - 1 + raw.length) % raw.length];
+    const len = Math.hypot(q.x - prev.x, q.y - prev.y);
+    if (len < 1e-9) return;
+    const n = Math.ceil(len / 0.5);
+    for (let k = 1; k <= n; k++) base.push({ x: prev.x + ((q.x - prev.x) * k) / n, y: prev.y + ((q.y - prev.y) * k) / n });
+  });
+  const cx = base.reduce((a, q) => a + q.x, 0) / base.length, cyc = base.reduce((a, q) => a + q.y, 0) / base.length;
+  const dirs = base.map((q, i) => {
+    const a = base[(i - 1 + base.length) % base.length], b = base[(i + 1) % base.length];
+    let nx = b.y - a.y, ny = a.x - b.x;
+    const l = Math.hypot(nx, ny) || 1;
+    nx /= l; ny /= l;
+    if (nx * (q.x - cx) + ny * (q.y - cyc) < 0) { nx = -nx; ny = -ny; } // away from the hole: into the material
+    const s = (twoSided ? Math.abs(q.y - cy) : cy - q.y) / (L / 2);
+    const t = Math.min(1, Math.max(0, (s - 0.2) / 0.7));
+    return { nx, ny, w: t * t * (3 - 2 * t) };
+  });
+  const exit = (z) => {
+    if (z < e) return e - z; // bed: 45°
+    const u = T - z;
+    return u < e ? e - Math.sqrt(Math.max(0, e * e - (e - u) ** 2)) : 0;
+  };
+  const ringAt = (off, z) => {
+    const x = exit(z);
+    return base.map((q, i) => { const k = Math.max(off, dirs[i].w * x); return { x: q.x + dirs[i].nx * k, y: q.y + dirs[i].ny * k }; });
+  };
+  ringAt.breaks = [0, e, ...Array.from({ length: 9 }, (_, i) => T - (e - e * Math.cos((Math.PI / 2) * (i / 8))))];
+  return ringAt;
 }
 
 export function framePlan(p) {
@@ -239,15 +303,17 @@ export function framePlan(p) {
     { x: x0, y: yOuterTop, r: p.outerRadius },
   ];
   const yMax = yOuterTop + Math.max(0, p.bow), yMin = yOuterBot - (bowBottom ? Math.max(0, p.bow) : 0);
-  const cy = Hw / 2;
+  const cy = Hw / 2 + (p.holeY ?? 0);
   // Cord holes: centred in the side bar material that is left between the outer edge and the
-  // pocket rim, which the front radius widens at the top face.
+  // pocket rim (which the front radius widens at the top face), then shifted by holeX / holeY.
+  // Both holes move alike: outwards is −x on the left, +x on the right.
   const c = p.chamferLayers * p.layerHeight; // 45° chamfers, both faces
   const rim = Math.max(0, p.edgeRadius);
-  const slotX = [-(sb + rim) / 2, Ww + (sb + rim) / 2];
+  const dx = p.holeX ?? 0;
+  const slotX = [-(sb + rim) / 2 - dx, Ww + (sb + rim) / 2 + dx];
   const slots = slotX.map((sx) => slot(p, sx, cy));
   const holeHalf = Math.max(...roundedRing(slots[0], 0, segmentPlan(slots[0], 0)).map((q) => Math.abs(q.x - slotX[0])));
-  const sideWall = (sb - rim) / 2 - holeHalf - c; // material left on each side of the hole at the top face
+  const sideWall = (sb - rim) / 2 - Math.abs(dx) - holeHalf - c; // material on the thinner side of the hole at the top face
 
   const outerP = chamferProfile(c, c, T);
   // Pocket wall: a quarter round at the top rim (the fingers wrap it) and a 45° fillet at the floor
@@ -259,23 +325,34 @@ export function framePlan(p) {
     breaks: [F, F + p.floorFillet, ...Array.from({ length: 9 }, (_, i) => T - (r - r * Math.cos((Math.PI / 2) * (i / 8))))],
   };
 
+  // rounded cord exit at the load end(s): teardrop one end, lens both, plain slot one end per hand
+  const exitR = Math.min(p.cordExit ?? 0, T / 2 - 0.2);
+  const holeLoops = slots.map(reversed);
+  const exitBreaks = { breaks: [] };
+  if (exitR > 0.05) {
+    const shape = slotShapeOf(p), twoSided = shape === "lens" || (shape === "plain" && two);
+    for (const h of holeLoops) h.ringAt = exitRinger(h, cy, p.slotLength, twoSided, exitR, T);
+    exitBreaks.breaks = holeLoops[0].ringAt.breaks;
+  }
+
   const zsOf = (z0, z1, profiles) => [...new Set([z0, z1, ...profiles.flatMap((q) => q.breaks)]
     .filter((z) => z >= z0 - 1e-9 && z <= z1 + 1e-9).map((z) => +z.toFixed(6)))].sort((x, y) => x - y);
-  const solid = [outer, ...slots.map(reversed)];
+  const solid = [outer, ...holeLoops];
   const winLoop = reversed(win);
   winLoop.ringAt = pocketOffsetter(win, Ww, Math.max(p.edgeRadius, p.floorFillet));
-  const pocketed = [outer, winLoop, ...slots.map(reversed)];
-  const below = zsOf(0, F, [outerP]).map((z) => ({ z, loops: solid, off: [outerP.off(z), outerP.off(z), outerP.off(z)] }));
-  const above = zsOf(F, T, [outerP, wallP]).map((z) => ({ z, loops: pocketed, off: [outerP.off(z), wallP.off(z), outerP.off(z), outerP.off(z)] }));
+  const pocketed = [outer, winLoop, ...holeLoops];
+  const below = zsOf(0, F, [outerP, exitBreaks]).map((z) => ({ z, loops: solid, off: [outerP.off(z), outerP.off(z), outerP.off(z)] }));
+  const above = zsOf(F, T, [outerP, wallP, exitBreaks]).map((z) => ({ z, loops: pocketed, off: [outerP.off(z), wallP.off(z), outerP.off(z), outerP.off(z)] }));
 
   const warnings = [];
   if (filletClashes(win, 0).length) warnings.push("Pocket: corner or step radii too large for the steps.");
   if (p.edgeRadius + p.floorFillet > d) warnings.push("Edge radius and floor fillet together are deeper than the edge.");
   if (c >= F) warnings.push("Floor thinner than the bed chamfer.");
   if (p.bow < 0 && p.barThick + p.bow < 8) warnings.push("The inward bow leaves the edge bar under 8 mm deep in the middle.");
-  if (p.slotLength > yOuterTop - yOuterBot - 2 * p.outerRadius) warnings.push("Cord hole longer than the side bar.");
-  if (sideWall < 0) throw new Error(`the cord hole does not fit in the side bar next to the rounded pocket rim. Make the side bars wider (at least ${(2 * (holeHalf + c) + rim + 3).toFixed(1)} mm), the front radius or the cord smaller.`);
-  if (sideWall < 3) warnings.push(`Side bar thin around the cord hole: ${sideWall.toFixed(1)} mm each side at the top face (the front radius widens the pocket there).`);
+  if (cy + p.slotLength / 2 > yOuterTop - p.outerRadius || cy - p.slotLength / 2 < yOuterBot + p.outerRadius) warnings.push("Cord hole reaches into the rounded corner of the plate: make it shorter or move it back towards the middle.");
+  if (exitR > 0.05 && exitR < (p.cordExit ?? 0) - 0.05) warnings.push(`Cord exit rounding limited to ${exitR.toFixed(1)} mm by the plate thickness.`);
+  if (sideWall < 0) throw new Error(`the cord hole does not fit in the side bar (between the outer edge and the rounded pocket rim). ${dx ? "Move the holes back towards the middle of the side bar, make" : "Make"} the side bars wider (at least ${(2 * (holeHalf + c + Math.abs(dx)) + rim + 3).toFixed(1)} mm), the front radius or the cord smaller.`);
+  if (sideWall < 3) warnings.push(`Side bar thin around the cord hole: ${sideWall.toFixed(1)} mm on its thinner side at the top face (the front radius widens the pocket there).`);
   const longest = Math.max(Ww + 2 * sb, yMax - yMin);
   if (longest > 250) warnings.push(`The plate is ${longest.toFixed(0)} mm long: more than most print beds (250–256 mm).`);
   else if (longest > 180) warnings.push(`The plate is ${longest.toFixed(0)} mm long: too big for small printers (Bambu A1 mini, Prusa MINI: 180 mm).`);
@@ -285,7 +362,7 @@ export function framePlan(p) {
     layout, segs, botSegs, botLayout, topSide, botSide, two, Ww, Hw, sb, T, d, F, c, below, above, loops: pocketed,
     profiles: { outer: outerP, wall: wallP },
     yTop, yBot, yOuterTop, yOuterBot, winTopMax, warnings,
-    sw: p.cordDia + 1, slotX, holeHalf,
+    sw: p.cordDia + 1, slotX, slotY: cy, holeHalf,
     yMax, yMin,
     size: { x: Ww + 2 * sb, y: yMax - yMin, z: T },
   };
@@ -296,11 +373,11 @@ export function framePlan(p) {
 // change, instead of a failed triangulation.
 function ringsAt(levels, k) {
   const lv = levels[k];
-  return lv.loops.map((l, i) => l.ringAt ? l.ringAt(lv.off[i])
+  return lv.loops.map((l, i) => l.ringAt ? l.ringAt(lv.off[i], lv.z)
     : roundedRing(l, lv.off[i], segmentPlan(l, Math.max(...levels.map((q) => (Array.isArray(q.off) ? q.off[i] : q.off))))));
 }
 function crossings(a, b, self) {
-  const o = (p, q, r) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  const o = (p, q, r) => { const v = (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x); return Math.abs(v) < 1e-9 ? 0 : v; }; // touching ≠ crossing
   const box = (r) => r.map((p, i) => { const q = r[(i + 1) % r.length]; return [p, q, Math.min(p.x, q.x), Math.max(p.x, q.x), Math.min(p.y, q.y), Math.max(p.y, q.y)]; });
   const A = box(a), B = self ? A : box(b);
   for (let i = 0; i < A.length; i++) {
@@ -320,8 +397,8 @@ export function checkCollisions(plan) {
     "0-1": "the pocket reaches the outer edge: deepen the edge bar, or reduce the bow or the steps",
     "1-2": "the pocket runs into a cord hole: make the side bars wider, the front radius or the cord smaller",
     "1-3": "the pocket runs into a cord hole: make the side bars wider, the front radius or the cord smaller",
-    "0-2": "a cord hole runs out of the side bar (a larger front radius pushes it outwards): make the side bars wider, the hole shorter or the front radius smaller",
-    "0-3": "a cord hole runs out of the side bar (a larger front radius pushes it outwards): make the side bars wider, the hole shorter or the front radius smaller",
+    "0-2": "a cord hole runs out of the side bar: move it back towards the middle (hole position), make the side bars wider, the hole shorter or the front radius smaller",
+    "0-3": "a cord hole runs out of the side bar: move it back towards the middle (hole position), make the side bars wider, the hole shorter or the front radius smaller",
   };
   const checks = [[plan.below, 0, [0, 2, 3]], [plan.above, 0, [0, 1, 2, 3]], [plan.above, plan.above.length - 1, [0, 1, 2, 3]]];
   for (const [levels, k, map] of checks) {
