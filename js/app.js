@@ -8,6 +8,7 @@ import { highlightTriangles } from "./highlight.js";
 import { roundedRing, segmentPlan } from "./geom2d.js";
 import { createViewer } from "./viewer.js";
 import { setupPhotoDialog } from "./photo.js";
+import { attachGuide, infoButton } from "./guide.js";
 
 const STORE = "edgeLiftDesigner.params.v6";
 
@@ -21,7 +22,7 @@ const GROUPS = [
     { key: "hand", label: "Which hand", type: "select", options: [["right", "right"], ["left", "left"]],
       help: "With both hands: the hand on the top edge." },
     { key: "fingersR", type: "fingers", side: "R", title: "Right hand", photo: true, showIf: (p) => p.hands === 2 || p.hand === "right",
-      help: "P1: proximal phalanx, knuckle (MCP) to middle joint (PIP). Width: the finger at its end joint (DIP). Knuckle: how far this finger's knuckle sits towards the fingertips compared with the middle finger's (usually negative for the little finger)." },
+      help: "P1: knuckle to middle joint. Width: the finger at its end joint. Knuckle: offset from the middle finger's knuckle. Tap i for how to measure each, or measure from a photo." },
     { key: "fingersL", type: "fingers", side: "L", title: "Left hand", photo: true, showIf: (p) => p.hands === 2 || p.hand === "left",
       help: "Same measurements for the left hand." },
     { key: "unlevel", label: "Unlevel edge (height per finger)", type: "check" },
@@ -116,12 +117,12 @@ function buildControls(root, photo) {
       const id = `f-${f.key}`;
       if (f.type === "fingers") {
         row.className = "field fingers";
-        const cols = [["p1", "P1 mm", 20, 60, 0.5], ["w", "Width mm", 10, 30, 0.5], ["k", "Knuckle mm", -20, 10, 0.5]];
+        const cols = [["p1", "P1 mm", 20, 60, 0.5, "P1"], ["w", "Width mm", 10, 30, 0.5, "finger width"], ["k", "Knuckle mm", -20, 10, 0.5, "knuckle offset"]];
         const cell = (fi, [pre, , mn, mx, st]) => {
           const key = handKey(pre, fi, f.side);
           return `<td><input type="number" data-key="${key}" min="${mn}" max="${mx}" step="${st}" aria-label="${fi} ${pre}"></td>`;
         };
-        row.innerHTML = `<table class="finger-table"><caption>${f.title}</caption><tr><th></th>${cols.map((c) => `<th>${c[1]}</th>`).join("")}</tr>${
+        row.innerHTML = `<table class="finger-table"><caption>${f.title}</caption><tr><th></th>${cols.map((c) => `<th>${c[1]} ${infoButton(c[0], c[5])}</th>`).join("")}</tr>${
           FINGERS.map((fi) => `<tr><th>${fi}</th>${cols.map((c) => cell(fi, c)).join("")}</tr>`).join("")}</table>`;
         for (const inp of row.querySelectorAll("input")) {
           inp.value = params[inp.dataset.key];
@@ -400,6 +401,20 @@ document.getElementById("layoutPick").addEventListener("change", (e) => {
 window.addEventListener("resize", applyLayout);
 applyLayout();
 
+// Rows layout: the control cards sit in columns, each card spanning as many small grid rows as it is
+// tall, so a short card does not leave a gap under it when its neighbour is long (masonry). Cards
+// keep their reading order left to right. Columns layout: one column, nothing to do.
+const MASONRY_ROW = 4, MASONRY_GAP = 12;
+const masonryObserver = new ResizeObserver(() => fitMasonry());
+function fitMasonry() {
+  const ctl = document.getElementById("controls");
+  const on = document.querySelector("main").classList.contains("rows");
+  for (const card of ctl.children) {
+    card.style.gridRowEnd = on ? `span ${Math.ceil((card.getBoundingClientRect().height + MASONRY_GAP) / MASONRY_ROW)}` : "";
+  }
+}
+new MutationObserver(fitMasonry).observe(document.querySelector("main"), { attributes: true, attributeFilter: ["class"] });
+
 // ---- main ----
 const viewer = createViewer(document.getElementById("view3d"));
 // The photo dialog reports values without a hand suffix (p1Index …) and which hand it measured.
@@ -413,6 +428,8 @@ const photo = setupPhotoDialog({
   },
 });
 buildControls(document.getElementById("controls"), photo);
+attachGuide(document.getElementById("controls"));
+for (const card of document.getElementById("controls").children) masonryObserver.observe(card); // fits once on observe
 syncControls();
 
 let pending = 0;

@@ -190,7 +190,9 @@ main.rows #views { display: contents; }
 main.rows #stage { order: -1; position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 6px 0;
   grid-template-columns: 1fr 1fr; --stage-h: 30vh; }
 main.rows #stage .hint, main.rows #stage .inline { display: none; }
-main.rows #controls { grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); align-items: start; }
+main.rows #controls { grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); align-items: start;
+  grid-auto-rows: 4px; row-gap: 0; } /* masonry: app.js sets each card's row span from its height */
+main.rows #controls > * { margin-bottom: 12px; }
 @media (max-width: 600px) { main.rows #stage { --stage-h: 24vh; gap: 6px; } main.rows #stage .card { padding: 6px; } }
 
 /* icons next to the controls */
@@ -214,3 +216,34 @@ main.rows #controls { grid-template-columns: repeat(auto-fill, minmax(290px, 1fr
 .start li { margin: 4px 0; }
 #plate .dim-text { font-size: 3.6px; }
 .group-note { margin: 0 0 8px; }
+
+/* measurement guide: (i) buttons in the hand table and their floating card */
+button.info {
+  /* overrides the general button size (min-height 40px stretched it into an oval) */
+  display: inline-grid; place-items: center; box-sizing: border-box; flex: none;
+  width: 18px; height: 18px; min-width: 18px; min-height: 0; padding: 0; margin-left: 2px; position: relative;
+  border-radius: 50%; border: 1px solid var(--accent); background: transparent; color: var(--accent);
+  font: italic 600 11px/1 Georgia, serif; vertical-align: middle; cursor: help;
+}
+button.info::before { content: ""; position: absolute; inset: -8px; border-radius: 50%; } /* larger tap area */
+.info:hover, .info:focus-visible, .info.pinned { background: var(--accent); color: var(--accent-text); }
+.guide-tip {
+  position: fixed; z-index: 50; overflow-y: auto; overscroll-behavior: contain; padding: 10px 12px; border-radius: 10px; font-size: 0.85rem; line-height: 1.4;
+  background: var(--card); color: var(--text); border: 1px solid var(--line); box-shadow: 0 8px 28px rgb(0 0 0 / 0.25);
+}
+.guide-tip b { display: block; margin-bottom: 4px; }
+.guide-tip p { margin: 6px 0; }
+.guide-tip ol { margin: 4px 0 0; padding-left: 18px; }
+.guide-tip li { margin: 2px 0; }
+.guide-tip svg { display: block; width: 100%; height: auto; max-height: 150px; margin: 4px 0; }
+.guide-tip .f { fill: none; stroke: var(--part-line); stroke-width: 14; stroke-linecap: round; stroke-linejoin: round; opacity: 0.55; }
+.guide-tip .f.thin { stroke-width: 12; }
+.guide-tip .f-body { fill: var(--part); fill-opacity: 0.6; stroke: var(--part-line); stroke-width: 1.2; }
+.guide-tip .j { fill: var(--card); stroke: var(--part-line); stroke-width: 1.5; }
+.guide-tip .a { fill: none; stroke: var(--accent); stroke-width: 2.2; stroke-linecap: round; }
+.guide-tip .m-line { fill: none; stroke: var(--muted); stroke-width: 1; }
+.guide-tip .dash { stroke-dasharray: 3 3; }
+.guide-tip .t { font: 600 11px system-ui, sans-serif; fill: var(--accent); }
+.guide-tip .m { font: 10px system-ui, sans-serif; fill: var(--muted); }
+.finger-table th { white-space: nowrap; }
+.info-ref { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--accent); color: var(--accent); font: italic 600 10px/1 Georgia, serif; }
