@@ -221,8 +221,8 @@ function set(key, value) {
 }
 
 // ---- drawings ----
-// The plate as held for a lift: the fingers go into the pocket and press up on the top edge.
-// Seen from the palm side, so x runs right to left.
+// The plate as you see it while lifting: from the back, open side away from you, so x runs right
+// to left. The fingers go into the pocket and press up on the top edge.
 function drawPlate(svg, m) {
   const pl = m.plan;
   const W = pl.size.x, pad = 10;

@@ -13,10 +13,10 @@ test("edge heights per hand follow P1 + knuckle offset, relative to the middle f
   assert.deepEqual(fingerHeights({ ...p, stepScale: 0.5 }, "R"), { index: 2.5, middle: 0, ring: 1, little: 8.5 });
 });
 
-test("finger order: right hand index first, left hand mirrored", () => {
+test("finger order along x: right hand little finger first (seen from the back while lifting), left hand mirrored", () => {
   const names = (side) => fingerLayout(HAND_DEFAULTS, side).segments.map((s) => s.name);
-  assert.deepEqual(names("R"), ["margin", "index", "middle", "ring", "little", "margin"]);
-  assert.deepEqual(names("L"), ["margin", "little", "ring", "middle", "index", "margin"]);
+  assert.deepEqual(names("R"), ["margin", "little", "ring", "middle", "index", "margin"]);
+  assert.deepEqual(names("L"), ["margin", "index", "middle", "ring", "little", "margin"]);
 });
 
 test("width: the hand's finger widths + margins; a narrower hand is centred by wider margins", () => {

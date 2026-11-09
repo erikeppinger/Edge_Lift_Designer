@@ -35,14 +35,16 @@ export function fingerHeights(p, side) {
 }
 
 // Segments along one edge, from x = 0, each with its edge height h, for a hand holding that edge.
-// A right hand holds it with the thumb forwards, so its index finger comes first.
+// x runs as the print sees it (pocket up). While lifting you look at the plate from the back,
+// with the open side away from you, so x runs right to left for you: a right hand (index on your
+// left, little finger on your right) puts its little finger first along x.
 export function fingerLayout(p, side) {
   const h = fingerHeights(p, side);
   const segs = [];
   let x = 0;
   const add = (name, w, hh, finger) => { segs.push({ name, x0: x, x1: x + w, h: hh, finger }); x += w; };
   add("margin", p.sideMargin, null, false);
-  for (const f of side === "L" ? FINGERS.slice().reverse() : FINGERS) add(f, p[key("w", f, side)], h[f], true);
+  for (const f of side === "R" ? FINGERS.slice().reverse() : FINGERS) add(f, p[key("w", f, side)], h[f], true);
   add("margin", p.sideMargin, null, false);
   // The margins take the neighbouring finger's edge height.
   segs[0].h = segs[1].h;

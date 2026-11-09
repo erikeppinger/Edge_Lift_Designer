@@ -38,9 +38,10 @@ test("both hands: top edge from the chosen hand, bottom edge from the other, rot
   const top = (n) => plan.segs.find((s) => s.name === n), bot = (n) => plan.botSegs.find((s) => s.name === n);
   assert.equal(plan.yTop(top("little")), p.windowHeight + 12); // right little: 45 − 33
   assert.equal(plan.yBot(bot("little")), -13); // left little: 46.5 − 33.5, pointing down
-  // right hand: index first along the top; the left hand's own layout (little first) rotated: index first too
-  assert.ok(top("index").x0 < top("little").x0);
-  assert.ok(bot("index").x0 < bot("little").x0);
+  // right hand: little finger first along x on the top; the left hand's own layout (index first)
+  // rotated by 180°: little finger first too
+  assert.ok(top("little").x0 < top("index").x0);
+  assert.ok(bot("little").x0 < bot("index").x0);
   const one = framePlan({ ...p, hands: 1 });
   assert.deepEqual(one.botSegs.map((s) => s.h), [0]); // one hand: straight opposite border
 });

@@ -2,7 +2,7 @@
 // top border is the edge, stepped per finger in the plane of the plate. The cord runs through holes
 // in the side bars, at mid-thickness, so it pulls in line with the finger pads. No DOM.
 //
-// Plane of the plate (print XY), as held for a lift, y up:
+// Plane of the plate (print XY, seen from the open side), y up as held for a lift:
 //
 //    ╭──────────────────────────────────────╮
 //    │      top bar                          │
