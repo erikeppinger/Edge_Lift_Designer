@@ -192,15 +192,7 @@ export function loft(levels, { bottom = true, top = true, floorLoop = null, weld
   }
   if (floorLoop !== null) {
     const ccw = ringIdx[0][floorLoop].slice().reverse();
-    if (loops[floorLoop].ringAt) {
-      // Pocket outline from pocketOffsetter: bottom border left → right, then top border right →
-      // left, sampled at the same x positions. Fill it as a strip of quads, bottom to top.
-      const M = ccw.length / 2;
-      for (let k = 0; k < M - 1; k++) {
-        const b0 = ccw[k], b1 = ccw[k + 1], t0 = ccw[2 * M - 1 - k], t1 = ccw[2 * M - 2 - k];
-        idx.push(b0, b1, t1, b0, t1, t0);
-      }
-    } else idx.push(...triangulate([ccw], pts2));
+    idx.push(...triangulate([ccw], pts2));
   }
   if (top) idx.push(...triangulate(ringIdx[levels.length - 1], pts2));
 

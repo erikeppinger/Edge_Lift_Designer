@@ -31,6 +31,8 @@ export function highlightTriangles(model, params, key) {
   const holeWall = (t) => Math.abs(t.nz) < 0.98 && pl.slotX.some((sx) => Math.abs(t.x - sx) < pl.holeHalf + 1)
     && Math.abs(t.y - pl.slotY) < params.slotLength / 2 + 2;
   const chamfer = (t) => Math.abs(t.nz) > 0.3 && Math.abs(t.nz) < 0.95 && (t.z < c + 0.01 || t.z > T - c - 0.01) && !pocketWall(t);
+  // the labels' letters: near their wall, inside the box they were placed in
+  const label = (t) => (pl.labels ?? []).some((lb) => lb.contains(t.x, t.y, t.z));
   const corners = [[0, pl.yTop(pl.segs[0])], [Ww, pl.yTop(pl.segs.at(-1))], [0, pl.yBot(pl.botSegs[0])], [Ww, pl.yBot(pl.botSegs.at(-1))]];
 
   const P = {
@@ -48,6 +50,7 @@ export function highlightTriangles(model, params, key) {
     outerRadius: (t) => outerWall(t) && (t.x < -sb + params.outerRadius + 0.5 || t.x > Ww + sb - params.outerRadius - 0.5),
     slotShape: holeWall, cordDia: holeWall, slotLength: holeWall, holeX: holeWall, holeY: holeWall, cordExit: holeWall,
     chamferLayers: chamfer, layerHeight: chamfer,
+    labelMode: label, labelAuto: label, labelText: label, labelSize: label, labelDepth: label,
   };
   // the areas those top-face selections are cut to (plan coordinates: x0, x1, y0, y1)
   const REGIONS = {

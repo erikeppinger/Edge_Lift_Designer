@@ -74,7 +74,7 @@ test("steep steps: wall run = Δh / tan(angle)", () => {
 });
 
 test("pocket plate without rounding: volume = outer·T − pocket·d − slots·T", () => {
-  const p = { ...DEFAULTS, unlevel: false, chamferLayers: 0, edgeRadius: 0, floorFillet: 0, bow: 0, outerRadius: 0.001, windowRadius: 0.5, slotShape: "plain" };
+  const p = { ...DEFAULTS, unlevel: false, chamferLayers: 0, edgeRadius: 0, floorFillet: 0, bow: 0, outerRadius: 0.001, windowRadius: 0.5, slotShape: "plain", labelMode: "off" };
   const m = buildModel(p);
   assert.equal(m.stats.badEdges, 0);
   const pl = m.plan;
@@ -110,7 +110,7 @@ test("bar stress = 6·M / (T·b²), M = F(2L − w)/8", () => {
 });
 
 test("inward bow: bar outline dips by |bow| in the middle, size and strength follow", () => {
-  const two = { ...DEFAULTS, hands: 2 };
+  const two = { ...DEFAULTS, hands: 2, labelMode: "off" };
   const out = buildModel({ ...two, bow: 5 }), inw = buildModel({ ...two, bow: -5 }), flat = buildModel({ ...two, bow: 0 });
   close(out.size.y - flat.size.y, 10, 1e-9); // two bars, each +5
   close(inw.size.y, flat.size.y, 1e-9); // corners still at the full height
@@ -153,4 +153,22 @@ test("rounded cord exit: closed mesh, hole wider at the faces only at the load e
     const q = buildModel({ ...p, ...v });
     assert.equal(q.stats.badEdges, 0, JSON.stringify(v));
   }
+});
+
+test("labels: one per edge on its outer wall; raised adds, engraved removes the letters; closed mesh", () => {
+  for (const [hands, bow] of [[1, 4], [2, 4], [1, 0], [2, -6]]) {
+    const q = { ...DEFAULTS, hands, bow };
+    const base = buildModel({ ...q, labelMode: "off" }).stats.volume;
+    const up = buildModel({ ...q, labelMode: "raised" }), down = buildModel({ ...q, labelMode: "engraved" });
+    assert.equal(up.stats.badEdges, 0, `${hands} ${bow}`); assert.equal(down.stats.badEdges, 0, `${hands} ${bow}`);
+    const dUp = up.stats.volume - base, dDown = base - down.stats.volume;
+    assert.ok(dUp > 5 && dDown > 5, `${dUp} ${dDown}`);
+    close(dUp, dDown, 0.25 * dUp); // same letters, same depth (the bow bends them a little)
+    assert.deepEqual(up.plan.labels.map((l) => l.text), hands === 1 ? ["R 20"] : ["R 20", "L 20"]);
+  }
+  const m = buildModel({ ...DEFAULTS, labelText: "test 1" });
+  assert.deepEqual(m.plan.labels.map((l) => l.text), ["R 20 TEST 1"]);
+  const P = m.body.positions; let lo = Infinity, hi = -Infinity;
+  for (let i = 1; i < P.length; i += 3) { lo = Math.min(lo, P[i]); hi = Math.max(hi, P[i]); }
+  close(m.size.y, hi - lo, 1e-6); // raised letters count in the size
 });

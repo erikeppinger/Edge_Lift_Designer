@@ -12,7 +12,7 @@ const app = readFileSync(new URL("../js/app.js", import.meta.url), "utf8");
 const ranges = [...app.matchAll(/key: "(\w+)",[^}]*?min: (-?[\d.]+), max: (-?[\d.]+), step: ([\d.]+)/g)]
   .map(([, key, min, max, step]) => ({ key, min: +min, max: +max, step: +step }))
   .filter((r) => r.key in DEFAULTS);
-const selects = { hands: [1, 2], hand: ["left", "right"], slotShape: ["auto", "teardrop", "lens", "plain"], unlevel: [true, false], denseZones: [true, false] };
+const selects = { hands: [1, 2], hand: ["left", "right"], slotShape: ["auto", "teardrop", "lens", "plain"], labelMode: ["raised", "engraved", "off"], labelText: ["", "ERIK", "TEST 123 ABC"], unlevel: [true, false], denseZones: [true, false] };
 // finger table ranges (from the table definition)
 const table = [["p1", 20, 60], ["w", 10, 30], ["k", -20, 10]];
 for (const side of ["L", "R"]) for (const f of ["Index", "Middle", "Ring", "Little"]) for (const [pre, min, max] of table) ranges.push({ key: `${pre}${f}${side}`, min, max, step: 0.5 });
@@ -46,7 +46,7 @@ if (dump) {
   process.exit(0);
 }
 let ok = 0, refused = 0;
-const keys = ranges.map((r) => r.key).concat(["fingersR", "fingersL", "slotShape", "hands"]);
+const keys = ranges.map((r) => r.key).concat(["fingersR", "fingersL", "slotShape", "hands", "labelMode", "labelText"]);
 for (const p of cases) {
   let m;
   try { m = buildModel(p); } catch (e) {

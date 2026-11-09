@@ -62,6 +62,19 @@ const GROUPS = [
     { key: "cordExit", label: "Rounded cord exit", unit: "mm", min: 0, max: 6, step: 0.5,
       help: "Extra rounding where the cord bends out of the hole towards the load, fading out towards the other end: easier on the cord, no sharp edge to crack from. The walls inside stay straight, so the cord still jams. Round on the top face, 45° on the bed face (prints without support). 0 = off." },
   ] },
+  { title: "Label",
+    note: "On the outer wall of each edge, readable as it faces you while you lift: that edge's hand and the edge depth. With both hands each edge has its own. Letters have 45° sides so they print without overhangs.",
+    fields: [
+    { key: "labelMode", label: "Label", type: "select", options: [["raised", "raised"], ["engraved", "engraved"], ["off", "off"]],
+      help: "Raised letters are easy to feel and read. Engraved ones stay flush: nothing under the knuckles or for a bag to catch on." },
+    { key: "labelAuto", label: "Hand and edge depth, e.g. R 20", type: "check", showIf: (p) => p.labelMode !== "off" },
+    { key: "labelText", label: "Own text", type: "text", maxLength: 16, placeholder: "e.g. a name", showIf: (p) => p.labelMode !== "off",
+      help: "Added after the hand and depth. Letters A–Z, digits and - + . / (other characters are left out)." },
+    { key: "labelSize", label: "Letter height", unit: "mm", min: 4, max: 16, step: 0.5, showIf: (p) => p.labelMode !== "off",
+      help: "Made smaller automatically if the wall is too low or too short." },
+    { key: "labelDepth", label: "Relief", unit: "mm", min: 0.2, max: 1.5, step: 0.1, showIf: (p) => p.labelMode !== "off",
+      help: "How far the letters stand out (raised) or are cut in (engraved)." },
+  ] },
   { title: "Printing", open: true,
     note: "These are slicer settings: they go into the 3MF files (the STL ignores them) and into the filament estimate. Only layer height × chamfer layers changes the model itself (the chamfer size).",
     fields: [
@@ -138,6 +151,11 @@ function buildControls(root, photo) {
         for (const [v, t] of f.options) sel.add(new Option(t, String(v)));
         sel.value = String(params[f.key]);
         sel.addEventListener("change", () => set(f.key, typeof DEFAULTS[f.key] === "number" ? Number(sel.value) : sel.value));
+      } else if (f.type === "text") {
+        row.innerHTML = `<label for="${id}">${f.label}</label><input type="text" id="${id}" maxlength="${f.maxLength ?? 32}" placeholder="${f.placeholder ?? ""}" autocomplete="off" spellcheck="false">`;
+        const inp = row.querySelector("input");
+        inp.value = params[f.key];
+        inp.addEventListener("input", () => set(f.key, inp.value));
       } else if (f.type === "check") {
         row.innerHTML = `<input type="checkbox" id="${id}"><label for="${id}">${f.label}</label>`;
         const cb = row.querySelector("input");

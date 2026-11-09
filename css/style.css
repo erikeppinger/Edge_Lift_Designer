@@ -84,7 +84,7 @@ details[open] > summary { margin-bottom: 8px; }
 .field { display: grid; grid-template-columns: 1fr 76px; gap: 2px 8px; align-items: center; margin: 6px 0; }
 .field label { font-size: 0.92rem; }
 .field input[type="range"] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
-.field input[type="number"], .field select {
+.field input[type="number"], .field input[type="text"], .field select {
   width: 100%;
   padding: 4px 6px;
   border: 1px solid var(--line);
@@ -94,6 +94,7 @@ details[open] > summary { margin-bottom: 8px; }
   font: inherit;
 }
 .field select { grid-column: 2; }
+.field input[type="text"] { grid-column: 1 / -1; }
 .field .help { grid-column: 1 / -1; font-size: 0.8rem; color: var(--muted); }
 .field.check { grid-template-columns: auto 1fr; }
 
@@ -247,3 +248,4 @@ button.info::before { content: ""; position: absolute; inset: -8px; border-radiu
 .guide-tip .m { font: 10px system-ui, sans-serif; fill: var(--muted); }
 .finger-table th { white-space: nowrap; }
 .info-ref { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--accent); color: var(--accent); font: italic 600 10px/1 Georgia, serif; }
+.ico .t.lbl { font: 700 9px system-ui, sans-serif; letter-spacing: 0.5px; }

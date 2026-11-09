@@ -31,6 +31,8 @@ const cases = [
   ["dense-zones", { denseZones: true, zoneInfill: 80, zonePattern: "cubic" }],
   ["cord-exit", { cordExit: 4, holeX: 1.5, holeY: -6 }],
   ["cord-exit-lens", { cordExit: 3, hands: 2, holeY: 4 }],
+  ["label-engraved", { labelMode: "engraved", labelText: "TEST", labelDepth: 1 }],
+  ["label-two-hands", { hands: 2, labelSize: 12, labelDepth: 1.2 }],
   ["wide-hand", { wIndexR: 30, wMiddleR: 30, wRingR: 30, wLittleR: 30, sideMargin: 20 }],
 ];
 for (let i = 0; i < Number(nArg); i++) {

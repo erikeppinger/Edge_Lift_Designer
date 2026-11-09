@@ -21,6 +21,7 @@
 import { HAND_DEFAULTS, fingerLayout, fitLayout, sideOf, otherHand } from "./hand.js";
 import { filletClashes, reversed, teardrop, roundedRing, segmentPlan } from "./geom2d.js";
 import { pocketBody, chamferProfile, box, mergeMeshes } from "./mesh.js";
+import { applyLabel, labelText } from "./label.js";
 
 export const DEFAULTS = {
   ...HAND_DEFAULTS,
@@ -47,6 +48,12 @@ export const DEFAULTS = {
   holeX: 0, // shifts both holes from the middle of the side bar: + outwards, − towards the pocket
   holeY: 0, // shifts both holes along the side bar: + towards the top edge, − towards the bottom
   cordExit: 0, // rounded cord exit: extra edge rounding at the hole's load end(s), 0 = off
+  // label on the outer wall of each edge bar, read while lifting on that edge
+  labelMode: "raised", // raised, engraved or off
+  labelAuto: true, // that edge's hand and the edge depth, e.g. "R 20"
+  labelText: "", // own text after it (A–Z, 0–9, - + . /)
+  labelSize: 8, // letter height, mm (smaller if the wall is too low)
+  labelDepth: 0.6, // how far the letters stand out or are cut in, mm
   // printing
   nozzle: 0.4,
   layerHeight: 0.2,
@@ -66,71 +73,59 @@ export const DEFAULTS = {
 
 const rad = (deg) => (deg * Math.PI) / 180;
 
-// Exact offset of the pocket outline. The pocket is bounded by a bottom border B(x) and a top
-// border T(x) over 0 ≤ x ≤ Ww (rounded corners included), so growing it by d is the envelope of
-// circles: top max T(x') + √(d² − (x−x')²), bottom min B(x') − √(…); shrinking uses min/max the
-// other way round. Concentric fillet offsets fail here: on short step walls the grown fillets
-// overlap. Every ring has the same number of points (fixed x samples), so the rings line up.
-// maxOffset: the largest offset that will be asked for (rim round / floor fillet).
-export function pocketOffsetter(win, Ww, maxOffset = 0, spacing = 0.15, coarse = 1) {
-  const ring0 = roundedRing(win, 0, segmentPlan(win, 0, 0.005));
-  const iA = ring0.findIndex((q) => q.x >= Ww - 1e-9); // end of the bottom chain (right side, low)
-  const bottom = ring0.slice(0, iA + 1);
-  const top = ring0.slice(iA + 1).reverse(); // left → right
-  const sampler = (chain) => {
-    const xs = chain.map((q) => q.x), ys = chain.map((q) => q.y);
-    return (x) => {
-      let lo = 0, hi = xs.length - 1;
-      if (x <= xs[0]) return ys[0];
-      if (x >= xs[hi]) return ys[hi];
-      while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (xs[mid] <= x) lo = mid; else hi = mid; }
-      const t = xs[hi] - xs[lo] < 1e-12 ? 1 : (x - xs[lo]) / (xs[hi] - xs[lo]);
-      return ys[lo] + t * (ys[hi] - ys[lo]);
-    };
+// Offsets of the pocket outline for the rim round and the floor fillet. Every point of the outline
+// moves along its own normal by d, so a point on a step wall stays on that wall at every height
+// and the rings line up vertex for vertex (the loft joins point i of one ring to point i of the
+// next). Where a rounding is larger than the corner it runs over (a 4 mm rim on a 3 mm step) the
+// moved outline loops back over itself; that loop is cut off at the crossing, which is the crease
+// where the round meets itself. maxOffset: the largest |d| that will be asked for.
+export function pocketOffsetter(win, Ww, maxOffset = 0) {
+  // corners get at least a tiny radius, so every point has a normal; arcs are sampled for the
+  // radius they get at the largest offset
+  const base = win.map((q) => ({ ...q, r: Math.max(q.r, 0.05) }));
+  let pts = roundedRing(base, 0, segmentPlan(base, Math.max(0, maxOffset), 0.01));
+  pts = pts.filter((q, i) => { const p = pts[(i - 1 + pts.length) % pts.length]; return Math.hypot(q.x - p.x, q.y - p.y) > 1e-9; });
+  // start in the middle of the longest straight piece (never part of a loop, so no loop wraps
+  // around the start)
+  let best = 0, bestL = -1;
+  pts.forEach((q, i) => { const r = pts[(i + 1) % pts.length], L = Math.hypot(r.x - q.x, r.y - q.y); if (L > bestL) { bestL = L; best = i; } });
+  const nb = pts[(best + 1) % pts.length];
+  pts = [{ x: (pts[best].x + nb.x) / 2, y: (pts[best].y + nb.y) / 2 }, ...pts.slice(best + 1), ...pts.slice(0, best + 1)];
+  const n = pts.length;
+  // normals: the outline runs counter-clockwise around the pocket, outwards is to the right
+  const nrm = pts.map((q, i) => {
+    const p = pts[(i - 1 + n) % n], r = pts[(i + 1) % n];
+    const d1 = Math.hypot(q.x - p.x, q.y - p.y), d2 = Math.hypot(r.x - q.x, r.y - q.y);
+    const tx = (q.x - p.x) / d1 + (r.x - q.x) / d2, ty = (q.y - p.y) / d1 + (r.y - q.y) / d2, l = Math.hypot(tx, ty) || 1;
+    return { x: ty / l, y: -tx / l };
+  });
+  const cross = (p1, p2, p3, p4) => {
+    const d = (p2.x - p1.x) * (p4.y - p3.y) - (p2.y - p1.y) * (p4.x - p3.x);
+    if (Math.abs(d) < 1e-14) return null;
+    const t = ((p3.x - p1.x) * (p4.y - p3.y) - (p3.y - p1.y) * (p4.x - p3.x)) / d;
+    const u = ((p3.x - p1.x) * (p2.y - p1.y) - (p3.y - p1.y) * (p2.x - p1.x)) / d;
+    return t > 1e-9 && t < 1 - 1e-9 && u > 1e-9 && u < 1 - 1e-9 ? { x: p1.x + (p2.x - p1.x) * t, y: p1.y + (p2.y - p1.y) * t } : null;
   };
-  const T = sampler(top), B = sampler(bottom);
-  const N = Math.max(80, Math.ceil(Ww / spacing));
-  const fine = Array.from({ length: N + 1 }, (_, i) => (Ww * i) / N);
-  const Tf = fine.map(T), Bf = fine.map(B);
-  // Output samples by shape change: a new sample once either border has moved 0.3 mm in height
-  // or 1 mm along the edge since the last one. Straight stretches get few points, steep step walls
-  // many. The fractions are the same for every ring, so the rings still line up vertex for vertex.
-  // (Rounds only grow with the offset, so sampling the unrounded outline is fine enough.)
-  const keep = new Set([0, Ww]);
-  let lastJ = 0;
-  for (let j = 1; j <= N; j++) {
-    if (Math.abs(Tf[j] - Tf[lastJ]) > 0.3 || Math.abs(Bf[j] - Bf[lastJ]) > 0.3 || fine[j] - fine[lastJ] >= coarse) {
-      keep.add(+fine[j].toFixed(6));
-      lastJ = j;
-    }
-  }
-  // near the ends the offset circles sweep the corners: keep those fine
-  for (let j = 0; j <= N; j++) if (fine[j] < maxOffset + 2 || fine[j] > Ww - maxOffset - 2) keep.add(+fine[j].toFixed(6));
-  const us = [...keep].sort((a, b) => a - b).map((x) => x / Ww);
-  const M = us.length - 1;
   return (d) => {
-    const grow = d >= 0, e = Math.abs(d);
-    const x0 = grow ? -e : e, x1 = grow ? Ww + e : Ww - e;
-    const up = [], dn = [];
-    for (let i = 0; i <= M; i++) {
-      const x = x0 + (x1 - x0) * us[i];
-      if (e < 1e-9) { up.push(T(x)); dn.push(B(x)); continue; }
-      let u = grow ? -Infinity : Infinity, l = grow ? Infinity : -Infinity;
-      const j0 = Math.max(0, Math.floor(((x - e) / Ww) * N)), j1 = Math.min(N, Math.ceil(((x + e) / Ww) * N));
-      for (let j = j0; j <= j1; j++) {
-        const dx = x - fine[j];
-        if (Math.abs(dx) > e + 1e-9) continue; // tolerance: the end samples sit exactly at the reach
-        const h = Math.sqrt(Math.max(0, e * e - dx * dx));
-        if (grow) { u = Math.max(u, Tf[j] + h); l = Math.min(l, Bf[j] - h); }
-        else { u = Math.min(u, Tf[j] - h); l = Math.max(l, Bf[j] + h); }
+    const q = pts.map((p, i) => ({ x: p.x + nrm[i].x * d, y: p.y + nrm[i].y * d }));
+    if (Math.abs(d) > 1e-9) {
+      // cut off loops: the first segment that a later one (within reach) crosses keeps the crossing,
+      // the points in between collapse onto it
+      const reach = Math.min(n - 3, 600);
+      for (let i = 0; i < n - 2; i++) {
+        const a = q[i], b = q[i + 1]; // segment j runs q[j] → q[j + 1], the last one back to q[0]
+        const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
+        let hit = -1, X = null;
+        for (let j = i + 2; j <= Math.min(n - (i === 0 ? 2 : 1), i + reach); j++) {
+          const c = q[j], e = q[(j + 1) % n];
+          if (Math.max(c.x, e.x) < x0 || Math.min(c.x, e.x) > x1 || Math.max(c.y, e.y) < y0 || Math.min(c.y, e.y) > y1) continue;
+          const Y = cross(a, b, c, e);
+          if (Y) { hit = j; X = Y; }
+        }
+        if (hit >= 0) { for (let k = i + 1; k <= hit; k++) q[k] = { ...X }; i = hit - 1; }
       }
-      up.push(u); dn.push(l);
     }
-    // counter-clockwise: bottom left → right, top right → left; the hole loop runs the other way
-    const ccw = [];
-    for (let i = 0; i <= M; i++) ccw.push({ x: x0 + (x1 - x0) * us[i], y: dn[i] });
-    for (let i = M; i >= 0; i--) ccw.push({ x: x0 + (x1 - x0) * us[i], y: up[i] });
-    return ccw.reverse();
+    return q.reverse(); // the pocket is a hole in the plate: clockwise
   };
 }
 
@@ -303,6 +298,18 @@ export function framePlan(p) {
     { x: x0, y: yOuterTop, r: p.outerRadius },
   ];
   const yMax = yOuterTop + Math.max(0, p.bow), yMin = yOuterBot - (bowBottom ? Math.max(0, p.bow) : 0);
+  // The outer wall of each edge bar as built (the same points the loft makes), between the corner
+  // roundings, in reading order for someone looking down on that edge while lifting on it (letters'
+  // tops towards the open side): the labels go there. The ring runs right → left along the top bar
+  // and left → right along the bottom bar, which is the reading order on each.
+  const barWalls = () => {
+    const cPlan = segmentPlan(outer, p.chamferLayers * p.layerHeight);
+    const ring = roundedRing(outer, 0, cPlan);
+    const start = (i) => cPlan.slice(0, i).reduce((a, k) => a + k + 1, 0);
+    const i1 = outer.findIndex((q, i) => i > 0 && q.r > 0), i2 = i1 + 1, i3 = outer.length - 1;
+    const run = (from, to) => ring.slice(from, to + 1).filter((q, i, r) => i === 0 || Math.hypot(q.x - r[i - 1].x, q.y - r[i - 1].y) > 1e-9);
+    return { top: run(start(i2) + cPlan[i2], start(i3)), bottom: run(start(0) + cPlan[0], start(i1)) };
+  };
   const cy = Hw / 2 + (p.holeY ?? 0);
   // Cord holes: centred in the side bar material that is left between the outer edge and the
   // pocket rim (which the front radius widens at the top face), then shifted by holeX / holeY.
@@ -363,7 +370,7 @@ export function framePlan(p) {
     profiles: { outer: outerP, wall: wallP },
     yTop, yBot, yOuterTop, yOuterBot, winTopMax, warnings,
     sw: p.cordDia + 1, slotX, slotY: cy, holeHalf,
-    yMax, yMin,
+    yMax, yMin, barWalls, outer,
     size: { x: Ww + 2 * sb, y: yMax - yMin, z: T },
   };
 }
@@ -418,7 +425,39 @@ export function checkCollisions(plan) {
 export function buildFrame(p) {
   const plan = framePlan(p);
   checkCollisions(plan);
-  const body = pocketBody(plan.below, plan.above, 1);
+  let body;
+  try { body = pocketBody(plan.below, plan.above, 1); } catch (e) {
+    if (!/Triangulation/.test(e.message)) throw e;
+    // the outline touches itself somewhere the collision check cannot see (a pinch, not a crossing)
+    throw new Error("the pocket crosses itself where its borders come close: make the pocket higher, the steps or the front radius smaller.");
+  }
+  // labels: one on the outer wall of each edge bar, for that edge's hand
+  plan.labels = [];
+  if (p.labelMode !== "off") {
+    const walls = plan.barWalls();
+    const edges = [{ hand: p.hand, path: walls.top }];
+    if (plan.two) edges.push({ hand: otherHand(p.hand), path: walls.bottom });
+    const depth = (p.labelMode === "engraved" ? -1 : 1) * p.labelDepth;
+    const pen = Math.max(2.25 * (p.nozzle ?? 0.4), 0.15 * p.labelSize);
+    const zRange = [plan.c, plan.T - plan.c];
+    for (const e of edges) {
+      const text = labelText(p, e.hand);
+      if (!text) continue;
+      const r = applyLabel(body, { text, path: e.path, zRange, size: p.labelSize, pen, depth });
+      if (r.error) { plan.warnings.push(`Label left out: ${r.error}.`); continue; }
+      body = r.mesh;
+      plan.labels.push({ text, depth, box: r.box, size: r.size, contains: r.contains });
+      if (r.size < p.labelSize - 0.05) plan.warnings.push(`Label letters reduced to ${r.size.toFixed(1)} mm to fit the wall.`);
+    }
+    // raised letters stick out: the size follows the mesh
+    if (depth > 0 && plan.labels.length) {
+      const P = body.positions;
+      let lo = Infinity, hi = -Infinity, xl = Infinity, xh = -Infinity;
+      for (let i = 0; i < P.length; i += 3) { lo = Math.min(lo, P[i + 1]); hi = Math.max(hi, P[i + 1]); xl = Math.min(xl, P[i]); xh = Math.max(xh, P[i]); }
+      plan.yMin = Math.min(plan.yMin, lo); plan.yMax = Math.max(plan.yMax, hi);
+      plan.size = { ...plan.size, x: xh - xl, y: plan.yMax - plan.yMin };
+    }
+  }
   let modifier = null;
   if (p.denseZones) {
     // Denser infill in the edge bar (and the bottom bar), through the full thickness.
