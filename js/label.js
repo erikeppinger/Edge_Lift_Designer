@@ -160,7 +160,7 @@ export function contourLoops(field, level = 0) {
     const loop = [];
     let k = start;
     while (!seen.has(k)) { seen.add(k); loop.push(pt.get(k)); k = next.get(k); if (k === undefined) break; }
-    if (loop.length >= 3) { const l = simplify(loop, 0.03); if (l.length >= 3 && Math.abs(loopArea(l)) > 1e-4) loops.push(l); }
+    if (loop.length >= 3) { const l = simplify(loop, 0.03); if (l.length >= 3 && Math.abs(loopArea(l)) > 0.01) loops.push(l); }
   }
   return loops;
 }
@@ -223,7 +223,7 @@ function simplify(loop, tol) {
 // The wall's triangles are cut out and the wall is triangulated again around the letters; every
 // inner edge that crosses a facet line is split there, so the faces follow the facets.
 // Returns { mesh, box: [u0, u1, v0, v1], size, contains(x, y, z) } or { error }.
-export function applyLabel(mesh, { text, path, zRange, size, pen, depth, margin = 1.5 }) {
+export function applyLabel(mesh, { text, path, zRange, size, pen, depth, margin = 1.5, maxWidth = Infinity }) {
   const { positions: P, indices: I } = mesh;
   const n = path.length - 1;
   if (n < 1) return { error: "no wall for the label" };
@@ -283,7 +283,7 @@ export function applyLabel(mesh, { text, path, zRange, size, pen, depth, margin 
   if (border.length !== nextOf.size) return { error: "the label wall is not one simple face" };
 
   // fit and centre the text
-  const roomU = S[n] - 2 * margin, roomV = zb - za - 2 * margin;
+  const roomU = Math.min(S[n] - 2 * margin, maxWidth), roomV = zb - za - 2 * margin;
   let cap = Math.min(size, (roomV - pen) / 1.1);
   let field = cap > 0 ? textField(text, cap, pen) : null;
   if (field && field.width > roomU) { cap *= roomU / field.width; field = textField(text, cap, pen); }
@@ -312,7 +312,13 @@ export function applyLabel(mesh, { text, path, zRange, size, pen, depth, margin 
   const steps = Math.max(1, Math.round(Math.abs(depth) / 0.2)), dz = depth / steps;
   const levels = [];
   for (let k = 0; k < steps; k++) {
-    const loops = (k === 0 ? base : contourLoops(field, k * Math.abs(dz))).map(toWall);
+    if (k * Math.abs(dz) > pen / 2 - 0.06) break; // strokes thinner than 0.12 mm: the ridge ends here
+    // Traced on a grid, many outline points share one exact height; three of them in an exact
+    // line stall the triangulation or end up as a flat triangle. Each terrace is turned by a
+    // hair (1e-4 rad more per terrace, a few µm across the label), so no such lines remain.
+    const rot = 1e-4 * (k + 1), cs = Math.cos(rot), sn = Math.sin(rot), ox = (tx0 + tx1) / 2, oy = (ty0 + ty1) / 2;
+    const turn = (l) => l.map(([x, y]) => [ox + (x - ox) * cs - (y - oy) * sn, oy + (x - ox) * sn + (y - oy) * cs]);
+    const loops = (k === 0 ? base : contourLoops(field, k * Math.abs(dz))).map(turn).map(toWall);
     if (!loops.length) break;
     levels.push(loops);
   }
@@ -339,10 +345,11 @@ export function applyLabel(mesh, { text, path, zRange, size, pen, depth, margin 
       if (t === undefined || t2 === undefined) continue; // gone, or on the face's border
       const k = seamBetween(pts2[a].x, pts2[b].x);
       if (k < 0) continue;
-      const f = (S[k] - pts2[a].x) / (pts2[b].x - pts2[a].x), m = vert(S[k], pts2[a].y + (pts2[b].y - pts2[a].y) * f, w);
+      const f = (S[k] - pts2[a].x) / (pts2[b].x - pts2[a].x), mv = pts2[a].y + (pts2[b].y - pts2[a].y) * f;
       const third = (tt) => [tris[tt], tris[tt + 1], tris[tt + 2]].find((v) => v !== a && v !== b);
       const c = third(t), d = third(t2);
       unindex(t); unindex(t2);
+      const m = vert(S[k], mv, w);
       tris[t] = a; tris[t + 1] = m; tris[t + 2] = c;
       tris[t2] = b; tris[t2 + 1] = m; tris[t2 + 2] = d;
       const t3 = tris.length; tris.push(m, b, c);

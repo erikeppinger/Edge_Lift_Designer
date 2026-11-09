@@ -4,6 +4,19 @@ import { DEFAULTS, framePlan, strength } from "../js/frame.js";
 import { buildModel } from "../js/model.js";
 import { chamferProfile } from "../js/mesh.js";
 
+// triangles that are flat once the coordinates are 32-bit floats, as in the STL
+const degenerate = ({ positions, indices: I }) => {
+  const f = Float32Array.from(positions);
+  let n = 0;
+  for (let k = 0; k < I.length; k += 3) {
+    const [a, b, c] = [I[k], I[k + 1], I[k + 2]].map((i) => [f[3 * i], f[3 * i + 1], f[3 * i + 2]]);
+    const u = b.map((x, j) => x - a[j]), w = c.map((x, j) => x - a[j]);
+    const area = Math.hypot(u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]);
+    const longest = Math.max(Math.hypot(...u), Math.hypot(...w), Math.hypot(...c.map((x, j) => x - b[j])));
+    if (area <= 1e-12 * longest * longest) n++; // flat: two corners the same point, or all in line
+  }
+  return n;
+};
 const close = (a, b, tol) => assert.ok(Math.abs(a - b) <= tol, `${a} vs ${b} (±${tol})`);
 
 test("default frame: closed mesh, no warnings, bounding box = plan size", () => {
@@ -159,12 +172,10 @@ test("rounded cord exit: closed mesh, hole wider at the faces only at the load e
 test("labels: one per edge on its outer wall; raised adds, engraved removes the letters; closed mesh", () => {
   for (const [hands, bow] of [[1, 4], [2, 4], [1, 0], [2, -6]]) {
     const q = { ...DEFAULTS, hands, bow };
-    const base = buildModel({ ...q, labelMode: "off" }).stats.volume;
+    // (a label sits on a flat panel of the bowed wall, so compare raised with engraved: same panel)
     const up = buildModel({ ...q, labelMode: "raised" }), down = buildModel({ ...q, labelMode: "engraved" });
     assert.equal(up.stats.badEdges, 0, `${hands} ${bow}`); assert.equal(down.stats.badEdges, 0, `${hands} ${bow}`);
-    const dUp = up.stats.volume - base, dDown = base - down.stats.volume;
-    assert.ok(dUp > 5 && dDown > 5, `${dUp} ${dDown}`);
-    close(dUp, dDown, 0.25 * dUp); // same letters, same depth (the bow bends them a little)
+    assert.ok(up.stats.volume - down.stats.volume > 10 * hands, `${up.stats.volume - down.stats.volume}`);
     assert.deepEqual(up.plan.labels.map((l) => l.text), hands === 1 ? ["R 20"] : ["R 20", "L 20"]);
   }
   const m = buildModel({ ...DEFAULTS, labelText: "test 1" });
@@ -172,4 +183,11 @@ test("labels: one per edge on its outer wall; raised adds, engraved removes the 
   const P = m.body.positions; let lo = Infinity, hi = -Infinity;
   for (let i = 1; i < P.length; i += 3) { lo = Math.min(lo, P[i]); hi = Math.max(hi, P[i]); }
   close(m.size.y, hi - lo, 1e-6); // raised letters count in the size
+});
+
+test("no degenerate triangles in the STL's 32-bit coordinates (slicers repair and report them)", () => {
+  for (const v of [{}, { hands: 2 }, { hands: 2, edgeDepth: 30 }, { labelMode: "engraved" }, { edgeDepth: 12, edgeRadius: 3 }, { bow: -6, hands: 2 }]) {
+    const m = buildModel({ ...DEFAULTS, ...v });
+    assert.equal(degenerate(m.body), 0, JSON.stringify(v));
+  }
 });

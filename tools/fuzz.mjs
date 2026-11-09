@@ -57,6 +57,18 @@ for (const p of cases) {
   if (P.some((x) => !Number.isFinite(x))) note("NaN", p, "non-finite vertex");
   if (m.stats.badEdges) note("OPEN MESH", p, `${m.stats.badEdges} bad edges`);
   if (!(m.stats.volume > 0)) note("VOLUME", p, `volume ${m.stats.volume}`);
+  { // flat triangles in the STL's 32-bit coordinates (slicers repair and report them)
+    const f = Float32Array.from(P), I = m.body.indices;
+    let flat = 0;
+    for (let k = 0; k < I.length; k += 3) {
+      const [a, b, c] = [I[k], I[k + 1], I[k + 2]].map((i) => [f[3 * i], f[3 * i + 1], f[3 * i + 2]]);
+      const u = b.map((x, j) => x - a[j]), w = c.map((x, j) => x - a[j]);
+      const ar = Math.hypot(u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]);
+      const L = Math.max(Math.hypot(...u), Math.hypot(...w), Math.hypot(...c.map((x, j) => x - b[j])));
+      if (ar <= 1e-12 * L * L) flat++;
+    }
+    if (flat) note("DEGENERATE", p, `${flat} flat triangles`);
+  }
   try {
     const opts = { name: "t", body: m.body, modifier: m.modifier, settings: printSettings(p), place: [100, 100] };
     stl(m.body); threeMfPrusa(opts); threeMfOrca(opts);

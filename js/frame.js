@@ -21,7 +21,7 @@
 import { HAND_DEFAULTS, fingerLayout, fitLayout, sideOf, otherHand } from "./hand.js";
 import { filletClashes, reversed, teardrop, roundedRing, segmentPlan } from "./geom2d.js";
 import { pocketBody, chamferProfile, box, mergeMeshes } from "./mesh.js";
-import { applyLabel, labelText } from "./label.js";
+import { applyLabel, labelText, textField } from "./label.js";
 
 export const DEFAULTS = {
   ...HAND_DEFAULTS,
@@ -276,25 +276,39 @@ export function framePlan(p) {
   // Bowed bar edge: a circular arc through both corners, bulging by `bow` in the middle (inwards
   // when negative).
   const x0 = -sb, x1 = Ww + sb;
-  const arcPts = (yBase, dir) => {
+  // A label needs a flat wall: under it the bowed edge runs straight, as a chord between two points
+  // of the arc (half width of that flat panel, 0 = none).
+  const labelFlat = (hand) => {
+    if (p.labelMode === "off") return 0;
+    const text = labelText(p, hand), T0 = p.edgeDepth + p.floorThick, c0 = p.chamferLayers * p.layerHeight;
+    const pen = Math.max(2.25 * (p.nozzle ?? 0.4), 0.15 * p.labelSize);
+    const cap = Math.min(p.labelSize, (T0 - 2 * c0 - 3 - pen) / 1.1);
+    const f = text && cap > 0 ? textField(text, cap, pen) : null;
+    return f ? f.width / 2 + 3 : 0;
+  };
+  const panels = {}; // half widths of the flat label panels actually made, by bar
+  const arcPts = (yBase, dir, flat = 0) => {
     const b = Math.abs(p.bow ?? 0), sgn = Math.sign(p.bow ?? 0);
     if (b < 1e-6) return [];
     const L = x1 - x0, R = (L * L / 4 + b * b) / (2 * b), xc = (x0 + x1) / 2, n = 24;
-    const pts = [];
     const m = Math.min(2 * p.outerRadius + 1, L / 4); // keep clear of the corner roundings
-    for (let i = 0; i <= n; i++) {
-      const x = x1 - m - ((x1 - x0 - 2 * m) * i) / n; // right → left along the top; reversed for the bottom
-      pts.push({ x, y: yBase + dir * sgn * (Math.sqrt(R * R - (x - xc) ** 2) - (R - b)), r: 0 });
-    }
-    return pts;
+    const half = Math.min(flat, (L - 2 * m) / 2 - 2);
+    if (half > 0) panels[dir > 0 ? "top" : "bottom"] = half;
+    const yAt = (x) => yBase + dir * sgn * (Math.sqrt(R * R - (x - xc) ** 2) - (R - b));
+    const xs = [];
+    for (let i = 0; i <= n; i++) xs.push(x1 - m - ((x1 - x0 - 2 * m) * i) / n); // right → left along the top; reversed for the bottom
+    // (arc points closer than half a step to the panel's ends are left out: no sliver of wall)
+    const gap = (x1 - x0 - 2 * m) / n / 2;
+    const out = half > 0 ? [...xs.filter((x) => x > xc + half + gap), xc + half, xc - half, ...xs.filter((x) => x < xc - half - gap)] : xs;
+    return out.map((x) => ({ x, y: yAt(x), r: 0 }));
   };
   const bowBottom = two;
   const outer = [
     { x: x0, y: yOuterBot, r: p.outerRadius },
-    ...(bowBottom ? arcPts(yOuterBot, -1).reverse() : []),
+    ...(bowBottom ? arcPts(yOuterBot, -1, labelFlat(otherHand(p.hand))).reverse() : []),
     { x: x1, y: yOuterBot, r: p.outerRadius },
     { x: x1, y: yOuterTop, r: p.outerRadius },
-    ...arcPts(yOuterTop, 1),
+    ...arcPts(yOuterTop, 1, labelFlat(p.hand)),
     { x: x0, y: yOuterTop, r: p.outerRadius },
   ];
   const yMax = yOuterTop + Math.max(0, p.bow), yMin = yOuterBot - (bowBottom ? Math.max(0, p.bow) : 0);
@@ -370,7 +384,7 @@ export function framePlan(p) {
     profiles: { outer: outerP, wall: wallP },
     yTop, yBot, yOuterTop, yOuterBot, winTopMax, warnings,
     sw: p.cordDia + 1, slotX, slotY: cy, holeHalf,
-    yMax, yMin, barWalls, outer,
+    yMax, yMin, barWalls, outer, panels,
     size: { x: Ww + 2 * sb, y: yMax - yMin, z: T },
   };
 }
@@ -435,26 +449,27 @@ export function buildFrame(p) {
   plan.labels = [];
   if (p.labelMode !== "off") {
     const walls = plan.barWalls();
-    const edges = [{ hand: p.hand, path: walls.top }];
-    if (plan.two) edges.push({ hand: otherHand(p.hand), path: walls.bottom });
+    const edges = [{ hand: p.hand, path: walls.top, panel: plan.panels.top }];
+    if (plan.two) edges.push({ hand: otherHand(p.hand), path: walls.bottom, panel: plan.panels.bottom });
     const depth = (p.labelMode === "engraved" ? -1 : 1) * p.labelDepth;
     const pen = Math.max(2.25 * (p.nozzle ?? 0.4), 0.15 * p.labelSize);
     const zRange = [plan.c, plan.T - plan.c];
     for (const e of edges) {
       const text = labelText(p, e.hand);
       if (!text) continue;
-      const r = applyLabel(body, { text, path: e.path, zRange, size: p.labelSize, pen, depth });
+      // on a bowed bar the letters stay on its flat panel (3 mm clear of the panel's ends)
+      const r = applyLabel(body, { text, path: e.path, zRange, size: p.labelSize, pen, depth, maxWidth: e.panel ? 2 * e.panel - 6 : Infinity });
       if (r.error) { plan.warnings.push(`Label left out: ${r.error}.`); continue; }
       body = r.mesh;
       plan.labels.push({ text, depth, box: r.box, size: r.size, contains: r.contains });
       if (r.size < p.labelSize - 0.05) plan.warnings.push(`Label letters reduced to ${r.size.toFixed(1)} mm to fit the wall.`);
     }
-    // raised letters stick out: the size follows the mesh
-    if (depth > 0 && plan.labels.length) {
+    // raised letters stick out, a flat label panel cuts the top off a bow: the size follows the mesh
+    if (plan.labels.length) {
       const P = body.positions;
       let lo = Infinity, hi = -Infinity, xl = Infinity, xh = -Infinity;
       for (let i = 0; i < P.length; i += 3) { lo = Math.min(lo, P[i + 1]); hi = Math.max(hi, P[i + 1]); xl = Math.min(xl, P[i]); xh = Math.max(xh, P[i]); }
-      plan.yMin = Math.min(plan.yMin, lo); plan.yMax = Math.max(plan.yMax, hi);
+      plan.yMin = lo; plan.yMax = hi;
       plan.size = { ...plan.size, x: xh - xl, y: plan.yMax - plan.yMin };
     }
   }
