@@ -12,7 +12,7 @@ const app = readFileSync(new URL("../js/app.js", import.meta.url), "utf8");
 const ranges = [...app.matchAll(/key: "(\w+)",[^}]*?min: (-?[\d.]+), max: (-?[\d.]+), step: ([\d.]+)/g)]
   .map(([, key, min, max, step]) => ({ key, min: +min, max: +max, step: +step }))
   .filter((r) => r.key in DEFAULTS);
-const selects = { hands: [1, 2], hand: ["left", "right"], slotShape: ["auto", "teardrop", "lens", "plain"], labelMode: ["raised", "engraved", "off"], labelText: ["", "ERIK", "TEST 123 ABC"], unlevel: [true, false], denseZones: [true, false] };
+const selects = { insertHold: ["loose", "click", "magnet"], hands: [1, 2], hand: ["left", "right"], slotShape: ["auto", "teardrop", "lens", "plain"], labelMode: ["raised", "engraved", "off"], labelText: ["", "ERIK", "TEST 123 ABC"], unlevel: [true, false], denseZones: [true, false] };
 // finger table ranges (from the table definition)
 const table = [["p1", 20, 60], ["w", 10, 30], ["k", -20, 10]];
 for (const side of ["L", "R"]) for (const f of ["Index", "Middle", "Ring", "Little"]) for (const [pre, min, max] of table) ranges.push({ key: `${pre}${f}${side}`, min, max, step: 0.5 });
@@ -57,8 +57,13 @@ for (const p of cases) {
   if (P.some((x) => !Number.isFinite(x))) note("NaN", p, "non-finite vertex");
   if (m.stats.badEdges) note("OPEN MESH", p, `${m.stats.badEdges} bad edges`);
   if (!(m.stats.volume > 0)) note("VOLUME", p, `volume ${m.stats.volume}`);
-  { // flat triangles in the STL's 32-bit coordinates (slicers repair and report them)
-    const f = Float32Array.from(P), I = m.body.indices;
+  if (m.insert) {
+    if (m.insert.stats.badEdges) note("INSERT OPEN MESH", p, `${m.insert.stats.badEdges} bad edges`);
+    if (!(m.insert.stats.volume > 0)) note("INSERT VOLUME", p, `volume ${m.insert.stats.volume}`);
+    try { stl(m.insert.mesh); threeMfPrusa({ name: "t", body: m.insert.mesh, modifier: null, settings: printSettings(p), place: [100, 100] }); } catch (e) { note("INSERT EXPORT", p, e.message.slice(0, 90)); }
+  }
+  for (const [what, mesh] of [["", m.body], ...(m.insert ? [["INSERT ", m.insert.mesh]] : [])]) { // flat triangles in the STL's 32-bit coordinates (slicers repair and report them)
+    const f = Float32Array.from(mesh.positions), I = mesh.indices;
     let flat = 0;
     for (let k = 0; k < I.length; k += 3) {
       const [a, b, c] = [I[k], I[k + 1], I[k + 2]].map((i) => [f[3 * i], f[3 * i + 1], f[3 * i + 2]]);
@@ -67,7 +72,7 @@ for (const p of cases) {
       const L = Math.max(Math.hypot(...u), Math.hypot(...w), Math.hypot(...c.map((x, j) => x - b[j])));
       if (ar <= 1e-12 * L * L) flat++;
     }
-    if (flat) note("DEGENERATE", p, `${flat} flat triangles`);
+    if (flat) note(what + "DEGENERATE", p, `${flat} flat triangles`);
   }
   try {
     const opts = { name: "t", body: m.body, modifier: m.modifier, settings: printSettings(p), place: [100, 100] };

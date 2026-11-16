@@ -61,7 +61,7 @@ export function triangulate(rings, pts) {
         const cr = (v.x - a.x) * (b.y - a.y) - (v.y - a.y) * (b.x - a.x);
         const dt = (v.x - a.x) * (b.x - v.x) + (v.y - a.y) * (b.y - v.y);
         const len = Math.hypot(b.x - a.x, b.y - a.y);
-        if (Math.abs(cr) <= 1e-9 * Math.max(1, len) && dt > 0) {
+        if (Math.abs(cr) <= 2e-5 * len && dt > 0) { // within 0.02 µm of the line: one line in the STL's 32-bit coordinates
           removed.push({ v: ring[i], a: ring[(i - 1 + ring.length) % ring.length], b: ring[(i + 1) % ring.length] });
           ring.splice(i, 1); i--; changed = true;
         }
@@ -151,9 +151,11 @@ export function chamferLevels(stations, chamferBottom, chamferTop) {
 // `off` is one offset for all loops or an array with one per loop.
 // caps: bottom/top false leaves that end open; floorLoop = loop index closes only that loop's
 // first ring, facing up (the floor of a pocket whose walls are that loop).
-export function loft(levels, { bottom = true, top = true, floorLoop = null, welded = true } = {}) {
+// segOff: the largest offset of the stack this loft is a part of, so its rounded corners get the
+// same points as the parts above and below it.
+export function loft(levels, { bottom = true, top = true, floorLoop = null, welded = true, segOff = 0 } = {}) {
   const offOf = (lv, li) => (Array.isArray(lv.off) ? lv.off[li] : lv.off);
-  const plans = levels[0].loops.map((l, li) => segmentPlan(l, Math.max(...levels.map((lv) => offOf(lv, li)))));
+  const plans = levels[0].loops.map((l, li) => segmentPlan(l, Math.max(segOff, ...levels.map((lv) => offOf(lv, li)))));
   const loops = levels[0].loops;
   const pos = [];
   const ringIdx = levels.map((lv) => lv.loops.map((loop, li) => {
@@ -187,17 +189,48 @@ export function loft(levels, { bottom = true, top = true, floorLoop = null, weld
   const pts2 = [];
   for (let k = 0; k < pos.length / 3; k++) pts2.push({ x: pos[3 * k], y: pos[3 * k + 1] });
   if (bottom) {
-    const b = triangulate(ringIdx[0], pts2);
+    const b = triangulateSafe(ringIdx[0], pts2);
     for (let k = 0; k < b.length; k += 3) idx.push(b[k], b[k + 2], b[k + 1]);
   }
   if (floorLoop !== null) {
     const ccw = ringIdx[0][floorLoop].slice().reverse();
-    idx.push(...triangulate([ccw], pts2));
+    idx.push(...triangulateSafe([ccw], pts2));
   }
-  if (top) idx.push(...triangulate(ringIdx[levels.length - 1], pts2));
+  if (top) idx.push(...triangulateSafe(ringIdx[levels.length - 1], pts2));
 
   const mesh = { positions: Float64Array.from(pos), indices: Uint32Array.from(idx) };
   return welded ? weld(mesh) : mesh;
+}
+
+// triangulate, with a second and third try: the ear clipper can stall on floating-point ties
+// (a point exactly on a candidate diagonal). It is then run on copies of the points rounded to
+// 0.01 µm, to 0.1 µm, and nudged by a nanometre: that only steers the choice of triangles, the
+// vertices stay where they are.
+export function triangulateSafe(rings, pts) {
+  try { return triangulate(rings, pts); } catch (e) {
+    const tweaks = [(p) => ({ x: Math.round(p.x * 1e5) / 1e5, y: Math.round(p.y * 1e5) / 1e5 }), (p) => ({ x: Math.round(p.x * 1e4) / 1e4, y: Math.round(p.y * 1e4) / 1e4 }),
+      (p, k) => ({ x: p.x + 1e-6 * Math.sin(k * 12.9898), y: p.y + 1e-6 * Math.cos(k * 78.233) })];
+    for (const tweak of tweaks) {
+      const q = pts.slice();
+      for (const r of rings) for (const k of r) q[k] = tweak(pts[k], k);
+      try { return triangulate(rings, q); } catch { /* next */ }
+    }
+    throw e;
+  }
+}
+
+// A flat face at height z from rings of points: the first counter-clockwise (the outline), the
+// rest clockwise (holes). Points must be the very ones of the walls around it (the weld joins
+// them). up: facing +z, else −z.
+export function cap(rings, z, up = true) {
+  const same = (p, q) => Math.abs(p.x - q.x) < 1e-9 && Math.abs(p.y - q.y) < 1e-9;
+  const pts = [], idxRings = rings.map((r) => {
+    const u = r.filter((q, i) => !same(q, r[(i - 1 + r.length) % r.length]));
+    return u.map((q) => { pts.push({ x: q.x, y: q.y }); return pts.length - 1; });
+  });
+  const t = triangulateSafe(idxRings, pts);
+  if (!up) for (let k = 0; k < t.length; k += 3) [t[k + 1], t[k + 2]] = [t[k + 2], t[k + 1]];
+  return { positions: Float64Array.from(pts.flatMap((q) => [q.x, q.y, z])), indices: Uint32Array.from(t) };
 }
 
 // A plate with a blind pocket: `below` (closed at the bed, open on top) runs up to the pocket floor,
@@ -229,6 +262,37 @@ export function weld(mesh) {
     if (a !== b && b !== c && a !== c) idx.push(a, b, c);
   }
   return { positions: Float64Array.from(pos), indices: Uint32Array.from(idx) };
+}
+
+// Removes triangles that are flat in the STL's 32-bit coordinates: three corners in one line
+// (slicers report them as degenerate and repair the file). The middle corner b sits on the long
+// edge a–c: the triangle goes, and the neighbour across a–c is split at b, so the surface stays
+// closed. Run on the finished part.
+export function dropFlat({ positions: P, indices }) {
+  const idx = Array.from(indices), f = Float32Array.from(P);
+  const at = (i) => [f[3 * i], f[3 * i + 1], f[3 * i + 2]];
+  const flatAt = (t) => {
+    const v = [at(idx[t]), at(idx[t + 1]), at(idx[t + 2])];
+    const len = [0, 1, 2].map((k) => Math.hypot(...v[(k + 1) % 3].map((x, j) => x - v[(k + 2) % 3][j]))); // len[k]: the edge opposite corner k
+    const u = v[1].map((x, j) => x - v[0][j]), w = v[2].map((x, j) => x - v[0][j]), L = Math.max(...len);
+    const n = Math.hypot(u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]);
+    return n <= 1e-12 * L * L ? len.indexOf(L) : -1;
+  };
+  let from = 0;
+  for (let guard = 0; guard < 2000; guard++) {
+    let found = -1, mid = -1;
+    for (let t = from; t < idx.length; t += 3) { mid = flatAt(t); if (mid >= 0) { found = t; break; } }
+    if (found < 0) break;
+    const b = idx[found + mid], a = idx[found + (mid + 1) % 3], c = idx[found + (mid + 2) % 3]; // the triangle runs b → a → c
+    let nb = -1, k0 = 0; // the neighbour holds the edge c → a
+    for (let t = 0; t < idx.length && nb < 0; t += 3) for (let k = 0; k < 3; k++) if (t !== found && idx[t + k] === c && idx[t + (k + 1) % 3] === a) { nb = t; k0 = k; }
+    if (nb < 0 || a === b || b === c || a === c) { from = found + 3; continue; } // nothing to split against: leave it
+    const x = idx[nb + (k0 + 2) % 3];
+    idx[nb] = c; idx[nb + 1] = b; idx[nb + 2] = x;
+    idx[found] = b; idx[found + 1] = a; idx[found + 2] = x;
+    from = 0;
+  }
+  return { positions: P, indices: Uint32Array.from(idx) };
 }
 
 // Axis-aligned box mesh (modifier volumes).

@@ -20,7 +20,7 @@
 
 import { HAND_DEFAULTS, fingerLayout, fitLayout, sideOf, otherHand } from "./hand.js";
 import { filletClashes, reversed, teardrop, roundedRing, segmentPlan } from "./geom2d.js";
-import { pocketBody, chamferProfile, box, mergeMeshes } from "./mesh.js";
+import { pocketBody, chamferProfile, box, mergeMeshes, loft, cap, weld } from "./mesh.js";
 import { applyLabel, labelText, textField } from "./label.js";
 
 export const DEFAULTS = {
@@ -48,6 +48,11 @@ export const DEFAULTS = {
   holeX: 0, // shifts both holes from the middle of the side bar: + outwards, − towards the pocket
   holeY: 0, // shifts both holes along the side bar: + towards the top edge, − towards the bottom
   cordExit: 0, // rounded cord exit: extra edge rounding at the hole's load end(s), 0 = off
+  scoop: 0, // finger scoop: each finger's piece of the edge curves in by this much (0 = flat)
+  // insert: a table on the pocket floor that makes the edge shallower (0 = none)
+  insertHeight: 0,
+  insertHold: "loose", // loose (snug fit), click (bumps in grooves) or magnet (6 × 2 mm, glued in)
+  insertClear: 0.2, // gap between insert and pocket wall
   // label on the outer wall of each edge bar, read while lifting on that edge
   labelMode: "raised", // raised, engraved or off
   labelAuto: true, // that edge's hand and the edge depth, e.g. "R 20"
@@ -79,7 +84,10 @@ const rad = (deg) => (deg * Math.PI) / 180;
 // next). Where a rounding is larger than the corner it runs over (a 4 mm rim on a 3 mm step) the
 // moved outline loops back over itself; that loop is cut off at the crossing, which is the crease
 // where the round meets itself. maxOffset: the largest |d| that will be asked for.
-export function pocketOffsetter(win, Ww, maxOffset = 0) {
+// warp(point, normal): moves the finished outline's points (the finger scoops); fine(midpoint,
+// normal): spacing of extra points on a straight piece there, 0 for none. The returned ring(d, w, s) adds s · w[i] to
+// the offset of point i (the click grooves); ring.points are the outline's points, in w's order.
+export function pocketOffsetter(win, Ww, maxOffset = 0, { warp = null, fine = null } = {}) {
   // corners get at least a tiny radius, so every point has a normal; arcs are sampled for the
   // radius they get at the largest offset
   const base = win.map((q) => ({ ...q, r: Math.max(q.r, 0.05) }));
@@ -91,14 +99,24 @@ export function pocketOffsetter(win, Ww, maxOffset = 0) {
   pts.forEach((q, i) => { const r = pts[(i + 1) % pts.length], L = Math.hypot(r.x - q.x, r.y - q.y); if (L > bestL) { bestL = L; best = i; } });
   const nb = pts[(best + 1) % pts.length];
   pts = [{ x: (pts[best].x + nb.x) / 2, y: (pts[best].y + nb.y) / 2 }, ...pts.slice(best + 1), ...pts.slice(0, best + 1)];
-  const n = pts.length;
+  if (fine) {
+    const dense = [];
+    pts.forEach((q, i) => {
+      const r = pts[(i + 1) % pts.length], L = Math.hypot(r.x - q.x, r.y - q.y);
+      const sp = L > 1e-6 ? fine({ x: (q.x + r.x) / 2, y: (q.y + r.y) / 2 }, { x: (r.y - q.y) / L, y: -(r.x - q.x) / L }) : 0, k = sp > 0 ? Math.ceil(L / sp) : 1;
+      for (let j = 0; j < k; j++) dense.push({ x: q.x + ((r.x - q.x) * j) / k, y: q.y + ((r.y - q.y) * j) / k });
+    });
+    pts = dense;
+  }
   // normals: the outline runs counter-clockwise around the pocket, outwards is to the right
-  const nrm = pts.map((q, i) => {
-    const p = pts[(i - 1 + n) % n], r = pts[(i + 1) % n];
+  const normals = (pts) => pts.map((q, i) => {
+    const n = pts.length, p = pts[(i - 1 + n) % n], r = pts[(i + 1) % n];
     const d1 = Math.hypot(q.x - p.x, q.y - p.y), d2 = Math.hypot(r.x - q.x, r.y - q.y);
     const tx = (q.x - p.x) / d1 + (r.x - q.x) / d2, ty = (q.y - p.y) / d1 + (r.y - q.y) / d2, l = Math.hypot(tx, ty) || 1;
     return { x: ty / l, y: -tx / l };
   });
+  if (warp) { const n0 = normals(pts); pts = pts.map((q, i) => warp(q, n0[i])); }
+  const n = pts.length, nrm = normals(pts);
   const cross = (p1, p2, p3, p4) => {
     const d = (p2.x - p1.x) * (p4.y - p3.y) - (p2.y - p1.y) * (p4.x - p3.x);
     if (Math.abs(d) < 1e-14) return null;
@@ -106,9 +124,9 @@ export function pocketOffsetter(win, Ww, maxOffset = 0) {
     const u = ((p3.x - p1.x) * (p2.y - p1.y) - (p3.y - p1.y) * (p2.x - p1.x)) / d;
     return t > 1e-9 && t < 1 - 1e-9 && u > 1e-9 && u < 1 - 1e-9 ? { x: p1.x + (p2.x - p1.x) * t, y: p1.y + (p2.y - p1.y) * t } : null;
   };
-  return (d) => {
-    const q = pts.map((p, i) => ({ x: p.x + nrm[i].x * d, y: p.y + nrm[i].y * d }));
-    if (Math.abs(d) > 1e-9) {
+  const ring = (d, w = null, s = 0) => {
+    const q = pts.map((p, i) => { const e = d + (w && s ? w[i] * s : 0); return { x: p.x + nrm[i].x * e, y: p.y + nrm[i].y * e }; });
+    { // (also at d = 0: radii too large for a short step make the outline itself loop)
       // cut off loops: the first segment that a later one (within reach) crosses keeps the crossing,
       // the points in between collapse onto it
       const reach = Math.min(n - 3, 600);
@@ -127,6 +145,8 @@ export function pocketOffsetter(win, Ww, maxOffset = 0) {
     }
     return q.reverse(); // the pocket is a hole in the plate: clockwise
   };
+  ring.points = pts;
+  return ring;
 }
 
 // One stepped border, from x = 0 to x = Ww, at heights y(seg). Steps are steep walls (stepAngle)
@@ -359,13 +379,94 @@ export function framePlan(p) {
   const zsOf = (z0, z1, profiles) => [...new Set([z0, z1, ...profiles.flatMap((q) => q.breaks)]
     .filter((z) => z >= z0 - 1e-9 && z <= z1 + 1e-9).map((z) => +z.toFixed(6)))].sort((x, y) => x - y);
   const solid = [outer, ...holeLoops];
+  const warnings = [];
+  // Finger scoop: each finger's piece of an edge curves into its bar, a smooth bell across the
+  // finger (flat at both ends, so the ridges between fingers and the step walls stay as they are).
+  const scoop = Math.max(0, p.scoop ?? 0);
+  // Each finger's face is one concave curve, deepest in the middle of the finger. How each half
+  // ends depends on what is next to it:
+  //  - a step wall: a plain arc (parabola) right up to the wall, so the step's rounding and the
+  //    scoop are one curve, with no flat strip or S-bend between them;
+  //  - a neighbour at the same height: it eases out flat, a soft ridge between the two fingers;
+  //  - the pocket's end: it stays at its depth into the corner.
+  // All scoops have the same curvature, like fingers of one roundness: the full depth on the
+  // widest face, less on narrower ones (depth ∝ width²).
+  const faces = (list, yOf) => {
+    const ang = rad(Math.min(90, Math.max(30, p.stepAngle)));
+    const step = (sa, sb2) => Math.abs(yOf(sb2) - yOf(sa)) >= 0.05;
+    const run = (sa, sb2) => Math.abs(yOf(sb2) - yOf(sa)) / Math.tan(ang) / 2; // half the wall's run: to its corner point
+    const fingers = list.map((g, i) => (g.finger ? i : -1)).filter((i) => i >= 0), iFirst = fingers[0], iLast = fingers[fingers.length - 1];
+    const out = list.map((g, i) => {
+      if (!g.finger) return null;
+      const stepL = i > 0 && step(list[i - 1], g), stepR = i < list.length - 1 && step(g, list[i + 1]);
+      const fa = g.x0 + (stepL ? run(list[i - 1], g) : 0), fb = g.x1 - (stepR ? run(g, list[i + 1]) : 0);
+      return fb - fa > 3 ? { a: fa, b: fb, left: i === iFirst ? "hold" : stepL ? "arc" : "ease", right: i === iLast ? "hold" : stepR ? "arc" : "ease" } : null;
+    });
+    const widest = Math.max(0, ...out.filter(Boolean).map((q) => q.b - q.a));
+    return out.filter(Boolean).map((q) => ({ ...q, depth: scoop * ((q.b - q.a) / widest) ** 2 }));
+  };
+  const topFaces = scoop > 0 ? faces(segs, yTop) : [], botFaces = scoop > 0 && two ? faces(botSegs, yBot) : [];
+  const bell = (list, x) => {
+    const q = list.find((g) => (x > g.a || g.left === "hold") && (x < g.b || g.right === "hold"));
+    if (!q) return 0;
+    const mid = (q.a + q.b) / 2, kind = x < mid ? q.left : q.right, t = Math.min(1, Math.abs(x - mid) / ((q.b - q.a) / 2));
+    return q.depth * (kind === "hold" ? 1 : kind === "arc" ? 1 - t * t : Math.cos((Math.PI * t) / 2) ** 2);
+  };
+  const onSide = (q) => Math.abs(q.x) < 1e-6 || Math.abs(q.x - Ww) < 1e-6;
+  const hold = p.insertHold ?? "loose";
+  const pocketRing = pocketOffsetter(win, Ww, Math.max(p.edgeRadius, p.floorFillet), {
+    // (top or bottom border: by which way the outline faces there, up into the top bar or down)
+    warp: scoop > 0 ? (q, nq) => (onSide(q) ? q : nq.y > 0 ? { x: q.x, y: q.y + bell(topFaces, q.x) } : two ? { x: q.x, y: q.y - bell(botFaces, q.x) } : q) : null,
+    fine: (q, nq) => (onSide(q) ? (hold === "click" ? 0.5 : 0) : scoop > 0 && (nq.y > 0 || two) ? 0.8 : 0),
+  });
+  // Click hold: a 45° groove in each end wall of the pocket, just above the floor fillet; bumps on
+  // the insert snap into it. w: how much of the groove each outline point gets (the middle of the
+  // straight end walls, fading out over 1 mm).
+  const GROOVE = 0.5, zClick = p.floorFillet + 1 + GROOVE; // above the pocket floor
+  let click = null;
+  if (hold === "click") {
+    const ends = [[0, yBot(bFirst), yTop(first)], [Ww, yBot(bLast), yTop(last)]].map(([x, y0, y1]) => ({ x, yc: (y0 + y1) / 2, half: Math.min(6, (y1 - y0) / 2 - rw - 0.5) }));
+    if (Math.min(...ends.map((e) => e.half)) < 2 || zClick + GROOVE > d - r - 0.2) warnings.push("Click hold left out: the pocket's end walls are too short or too low for the grooves.");
+    else {
+      const weights = (shorter) => Float64Array.from(pocketRing.points, (q) => {
+        const e = ends.find((g) => Math.abs(q.x - g.x) < 1e-6);
+        return e ? Math.min(1, Math.max(0, e.half - shorter - Math.abs(q.y - e.yc))) : 0;
+      });
+      click = { depth: GROOVE, z: zClick, w: weights(0), wInsert: weights(1) };
+    }
+  }
+  const groove = click ? (z) => Math.max(0, click.depth - Math.abs(z - (F + click.z))) : null;
+  const grooveBreaks = { breaks: click ? [F + click.z - click.depth, F + click.z, F + click.z + click.depth] : [] };
+  // Magnet hold: two blind holes in the pocket floor for 6 × 2 mm magnets, near the pocket's ends.
+  const MAG = { r: 3.15, depth: 2.2, boss: 4.55 }, insertWall = Math.max(2, p.floorFillet + 1.2);
+  let magnets = null;
+  if (hold === "magnet") {
+    const inset = (p.insertClear ?? 0.2) + insertWall + 0.6 + MAG.boss;
+    const spots = [[inset, yBot(bFirst), yTop(first)], [Ww - inset, yBot(bLast), yTop(last)]].map(([x, y0, y1]) => ({ x, y: (y0 + y1) / 2, room: (y1 - y0) / 2 }));
+    if (F < MAG.depth + 0.6) warnings.push(`Magnet hold left out: the floor must be at least ${(MAG.depth + 0.6).toFixed(1)} mm thick for the magnet holes.`);
+    else if (Math.min(...spots.map((q) => q.room)) < inset || Ww < 4 * inset) warnings.push("Magnet hold left out: the pocket is too small for the magnets.");
+    else magnets = { ...MAG, spots, zHole: F - MAG.depth };
+  }
+  // (circles are turned a little, each differently: no two points level with each other, as such
+  // ties stall the triangulation)
+  const circle = (q, rad, ccw) => { const pts = Array.from({ length: 32 }, (_, i) => { const a = ((ccw ? i : -i) * Math.PI) / 16 + 0.3 + q.x * 0.013; return { x: q.x + rad * Math.cos(a), y: q.y + rad * Math.sin(a), r: 0 }; }); pts.ringAt = () => pts; return pts; };
   const winLoop = reversed(win);
-  winLoop.ringAt = pocketOffsetter(win, Ww, Math.max(p.edgeRadius, p.floorFillet));
+  winLoop.ringAt = (off, z) => pocketRing(off, click?.w, groove ? groove(z) : 0);
   const pocketed = [outer, winLoop, ...holeLoops];
   const below = zsOf(0, F, [outerP, exitBreaks]).map((z) => ({ z, loops: solid, off: [outerP.off(z), outerP.off(z), outerP.off(z)] }));
-  const above = zsOf(F, T, [outerP, wallP, exitBreaks]).map((z) => ({ z, loops: pocketed, off: [outerP.off(z), wallP.off(z), outerP.off(z), outerP.off(z)] }));
+  const above = zsOf(F, T, [outerP, wallP, exitBreaks, grooveBreaks]).map((z) => ({ z, loops: pocketed, off: [outerP.off(z), wallP.off(z), outerP.off(z), outerP.off(z)] }));
 
-  const warnings = [];
+  // with magnets the slab under the pocket is built in two parts: solid, then with the holes
+  let magnetStack = null;
+  if (magnets) {
+    const holes = magnets.spots.map((q) => circle(q, magnets.r, false));
+    const offs = (z, n) => [...solid.map(() => outerP.off(z)), ...Array(n).fill(0)];
+    magnetStack = {
+      low: zsOf(0, magnets.zHole, [outerP, exitBreaks]).map((z) => ({ z, loops: solid, off: offs(z, 0) })),
+      mid: zsOf(magnets.zHole, F, [outerP, exitBreaks]).map((z) => ({ z, loops: [...solid, ...holes], off: offs(z, holes.length) })),
+      holes,
+    };
+  }
   if (filletClashes(win, 0).length) warnings.push("Pocket: corner or step radii too large for the steps.");
   if (p.edgeRadius + p.floorFillet > d) warnings.push("Edge radius and floor fillet together are deeper than the edge.");
   if (c >= F) warnings.push("Floor thinner than the bed chamfer.");
@@ -385,6 +486,8 @@ export function framePlan(p) {
     yTop, yBot, yOuterTop, yOuterBot, winTopMax, warnings,
     sw: p.cordDia + 1, slotX, slotY: cy, holeHalf,
     yMax, yMin, barWalls, outer, panels,
+    pocketRing, click, magnets, magnetStack, insertWall, circle, scoop, scoopFaces: { top: topFaces, bottom: botFaces },
+    pocketCorners: [[0, yBot(bFirst)], [Ww, yBot(bLast)]], // the two lower corners (bottom border)
     size: { x: Ww + 2 * sb, y: yMax - yMin, z: T },
   };
 }
@@ -440,7 +543,16 @@ export function buildFrame(p) {
   const plan = framePlan(p);
   checkCollisions(plan);
   let body;
-  try { body = pocketBody(plan.below, plan.above, 1); } catch (e) {
+  try {
+    const ms = plan.magnetStack;
+    body = !ms ? pocketBody(plan.below, plan.above, 1) : weld(mergeMeshes([
+      loft(ms.low, { top: false, welded: false, segOff: plan.c }),
+      loft(ms.mid, { bottom: false, top: false, welded: false, segOff: plan.c }),
+      ...ms.holes.map((hl) => cap([reversed(hl)], plan.magnets.zHole, true)), // hole bottoms
+      loft(plan.above, { bottom: false, welded: false }),
+      cap([reversed(plan.loops[1].ringAt(plan.above[0].off[1], plan.F)), ...ms.holes], plan.F, true), // pocket floor around the holes
+    ]));
+  } catch (e) {
     if (!/Triangulation/.test(e.message)) throw e;
     // the outline touches itself somewhere the collision check cannot see (a pinch, not a crossing)
     throw new Error("the pocket crosses itself where its borders come close: make the pocket higher, the steps or the front radius smaller.");
@@ -494,7 +606,7 @@ export function strength(p, plan) {
   const L = plan.slotX[1] - plan.slotX[0];
   const handW = plan.layout.segments.filter((s) => s.finger).reduce((a, s) => a + s.x1 - s.x0, 0);
   const M = (F * (2 * L - handW)) / 8;
-  const B = p.barThick + Math.min(0, p.bow ?? 0); // an inward bow thins the bar where the moment is largest
+  const B = p.barThick + Math.min(0, p.bow ?? 0) - (plan.scoop ?? 0); // an inward bow and the finger scoops thin the bar
   const bend = (6 * M) / (plan.T * B * B); // rectangle: plate thickness × bar depth
   // Each side bar carries half the load past its hole: the bar width minus the hole's width.
   const net = p.sideBar - 2 * plan.holeHalf;

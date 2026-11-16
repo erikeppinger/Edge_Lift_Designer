@@ -21,6 +21,9 @@ Everything runs in your browser. Measurements and photos never leave your device
 - **One or two hands**: one stepped edge with a straight opposite border, or a stepped edge per hand
   opposite each other, each from that hand's own data.
 - **Edge**: depth, front radius, floor thickness, step angle and step rounding, pocket size.
+- **Finger scoop**: optionally each finger’s face on the edge curves in slightly, like the finger pad.
+- **Insert**: an optional separate part that lies in the pocket and makes the edge shallower, so one
+  plate serves several depths. Held by a snug fit, click-in bumps or 6 × 2 mm magnets.
 - **Frame**: bar depth, side bars, rounded corners, outer bar edge bowed outwards or inwards.
 - **Cord holes**: teardrop (narrow end towards the load, so the cord cinches), lens for two edges,
   or plain.

@@ -8,7 +8,7 @@
 // part stays one closed surface: no overlapping shells for the slicer to merge. A bowed bar is a
 // row of flat facets; the letters follow them.
 
-import { triangulate } from "./mesh.js";
+import { triangulate, dropFlat } from "./mesh.js";
 
 // ---- font: polylines on a 4 × 6 cell (x right, y up), arcs as point lists ----
 const arc = (cx, cy, rx, ry, a0, a1, n = 16) => Array.from({ length: n + 1 }, (_, i) => {
@@ -160,7 +160,7 @@ export function contourLoops(field, level = 0) {
     const loop = [];
     let k = start;
     while (!seen.has(k)) { seen.add(k); loop.push(pt.get(k)); k = next.get(k); if (k === undefined) break; }
-    if (loop.length >= 3) { const l = simplify(loop, 0.03); if (l.length >= 3 && Math.abs(loopArea(l)) > 0.01) loops.push(l); }
+    if (loop.length >= 3) { const l = straighten(simplify(loop, 0.03)); if (l.length >= 3 && Math.abs(loopArea(l)) > 0.01) loops.push(l); }
   }
   return loops;
 }
@@ -191,6 +191,24 @@ function inside(p, poly) {
     if ((a[1] > p[1]) !== (b[1] > p[1]) && p[0] < ((b[0] - a[0]) * (p[1] - a[1])) / (b[1] - a[1]) + a[0]) c = !c;
   }
   return c;
+}
+
+// Drops points that lie (nearly) on the line between their neighbours: they would give triangles
+// that are flat in the STL's 32-bit coordinates.
+function straighten(loop) {
+  let l = loop, changed = true;
+  while (changed && l.length > 3) {
+    changed = false;
+    const out = [];
+    for (let i = 0; i < l.length; i++) {
+      const a = out.length ? out[out.length - 1] : l[l.length - 1], p = l[i], b = l[(i + 1) % l.length];
+      const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1e-12;
+      if (Math.abs((p[0] - a[0]) * dy - (p[1] - a[1]) * dx) / L < 0.004 && l.length - (i - out.length) > 3) { changed = true; continue; }
+      out.push(p);
+    }
+    l = out;
+  }
+  return l;
 }
 
 // Douglas–Peucker on a closed loop.
@@ -421,7 +439,7 @@ export function applyLabel(mesh, { text, path, zRange, size, pen, depth, margin 
     }
     return best.d <= Math.abs(depth) + 0.05 && best.s > box[0] - 0.3 && best.s < box[1] + 0.3 && z > box[2] - 0.3 && z < box[3] + 0.3;
   };
-  return { mesh: { positions: pos, indices: Uint32Array.from(idx) }, box, size: cap, contains };
+  return { mesh: { positions: pos, indices: dropFlat({ positions: pos, indices: idx }).indices }, box, size: cap, contains };
 }
 
 function cross3(P, a, b, c) {

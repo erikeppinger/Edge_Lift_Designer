@@ -191,3 +191,58 @@ test("no degenerate triangles in the STL's 32-bit coordinates (slicers repair an
     assert.equal(degenerate(m.body), 0, JSON.stringify(v));
   }
 });
+
+test("finger scoop: each finger's face curves in by the scoop, flat at its ends; closed mesh", () => {
+  const p = { ...DEFAULTS, scoop: 1.5 }, plan = framePlan(p), ring = plan.pocketRing(0);
+  const faces = plan.scoopFaces.top, widest = Math.max(...faces.map((f) => f.b - f.a));
+  assert.equal(faces.length, 4);
+  for (const f of faces) {
+    const s = plan.segs.find((q) => q.finger && f.a >= q.x0 - 1e-9 && f.b <= q.x1 + 1e-9), xm = (f.a + f.b) / 2;
+    const top = (x) => Math.max(...ring.filter((q) => Math.abs(q.x - x) < 0.5).map((q) => q.y));
+    close(f.depth, 1.5 * ((f.b - f.a) / widest) ** 2, 1e-9); // same curvature: depth ∝ width²
+    close(top(xm), plan.yTop(s) + f.depth, 0.02); // deepest in the middle of the flat face
+    // an end finger: the depth is held towards the pocket's end
+    if (f.left === "hold") close(top(f.a - 0.4), plan.yTop(s) + f.depth, 0.03);
+    if (f.right === "hold") close(top(f.b + 0.4), plan.yTop(s) + f.depth, 0.03);
+    assert.ok(["hold", "arc", "ease"].includes(f.left) && ["hold", "arc", "ease"].includes(f.right));
+  }
+  const m = buildModel(p), two = buildModel({ ...p, hands: 2 });
+  assert.equal(m.stats.badEdges, 0); assert.equal(two.stats.badEdges, 0);
+  assert.equal(degenerate(m.body), 0);
+  assert.ok(m.strength.sections[0].stress > buildModel(DEFAULTS).strength.sections[0].stress); // thinner bar
+});
+
+test("insert: closed, fits the pocket with the clearance all round, edge depth = depth − height", () => {
+  for (const v of [{}, { insertHold: "click" }, { insertHold: "magnet" }, { hands: 2, scoop: 1, insertHold: "click" }, { hands: 2, insertHold: "magnet" }, { insertHeight: 3 }]) {
+    const p = { ...DEFAULTS, insertHeight: 10, edgeDepth: 30, ...v }, m = buildModel(p);
+    assert.equal(m.stats.badEdges, 0, JSON.stringify(v));
+    assert.ok(m.insert, JSON.stringify(v));
+    assert.equal(m.insert.stats.badEdges, 0, JSON.stringify(v));
+    assert.equal(degenerate(m.insert.mesh), 0, JSON.stringify(v));
+    assert.equal(m.insert.depthLeft, 30 - p.insertHeight);
+    assert.deepEqual(m.warnings, [], JSON.stringify(v));
+    // turned over into the pocket: x mirrored back. Every point of the insert lies inside the
+    // pocket's outline, at least the clearance from it (the click bumps reach 0.3 mm into grooves).
+    const pocket = m.plan.pocketRing(0), P = m.insert.mesh.positions, off = m.offset;
+    const dist = (x, y) => { let best = Infinity; pocket.forEach((a, i) => { const b = pocket[(i + 1) % pocket.length], dx = b.x - a.x, dy = b.y - a.y, t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1))); best = Math.min(best, Math.hypot(x - a.x - t * dx, y - a.y - t * dy)); }); return best; };
+    const inside = (x, y) => { let c = false; pocket.forEach((a, i) => { const b = pocket[(i + 1) % pocket.length]; if ((a.y > y) !== (b.y > y) && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) c = !c; }); return c; };
+    let least = Infinity;
+    for (let i = 0; i < P.length; i += 3) {
+      const x = m.plan.Ww - (P[i] - off.x), y = P[i + 1] - off.y;
+      const d = inside(x, y) ? dist(x, y) : -dist(x, y);
+      least = Math.min(least, d);
+    }
+    const bump = m.insert.hold === "click" ? 0.5 : 0; // bump = clearance + 0.3
+    close(least, 0.2 - bump, 0.03);
+  }
+});
+
+test("insert: too high for the pocket's rim is left out with a message; plate features follow the hold", () => {
+  const m = buildModel({ ...DEFAULTS, insertHeight: 18 });
+  assert.equal(m.insert, null);
+  assert.match(m.warnings.join(" "), /up to 15 mm/);
+  const base = buildModel(DEFAULTS).stats.volume;
+  assert.ok(buildModel({ ...DEFAULTS, insertHold: "click" }).stats.volume < base); // grooves
+  close(base - buildModel({ ...DEFAULTS, insertHold: "magnet" }).stats.volume, 2 * Math.PI * 3.15 ** 2 * 2.2, 3); // two magnet holes (32-gons)
+  assert.equal(buildModel({ ...DEFAULTS, insertHeight: 10 }).stats.volume, base); // a loose insert leaves the plate alone
+});

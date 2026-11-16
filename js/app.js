@@ -29,6 +29,8 @@ const GROUPS = [
     { key: "stepScale", label: "Step strength", unit: "× P1 difference", min: 0, max: 1.5, step: 0.05, showIf: (p) => p.unlevel,
       help: "1 = the full length difference becomes edge height." },
     { key: "sideMargin", label: "Extra width each side", unit: "mm", min: 0, max: 20, step: 0.5 },
+    { key: "scoop", label: "Finger scoop", unit: "mm", min: 0, max: 2, step: 0.1,
+      help: "Each finger's face on the edge is one concave curve, like the finger pad, deepest in the middle of the finger. It runs right up to the step walls and, at the two end fingers, stays at its depth into the pocket's corner. This is the depth on the widest face; narrower faces get the same curvature, so less depth. 0 = flat. The edge bar gets thinner by the same amount." },
   ] },
   { title: "Edge", open: true, fields: [
     { key: "edgeDepth", label: "Edge depth", unit: "mm", min: 8, max: 35, step: 0.5,
@@ -61,6 +63,17 @@ const GROUPS = [
       help: "Moves both holes along the side bar: + towards the top edge, − towards the bottom. 0 = level with the pocket's middle." },
     { key: "cordExit", label: "Rounded cord exit", unit: "mm", min: 0, max: 6, step: 0.5,
       help: "Extra rounding where the cord bends out of the hole towards the load, fading out towards the other end: easier on the cord, no sharp edge to crack from. The walls inside stay straight, so the cord still jams. Round on the top face, 45° on the bed face (prints without support). 0 = off." },
+  ] },
+  { title: "Insert",
+    note: "A separate part that lies on the pocket floor and makes the edge shallower: one plate, several depths. It is a hollow table (2 mm plate, walls around the rim), printed plate down and put in upside down. Two 3 mm holes in the lower corners, away from the fingertips, let the air out as it goes in; hook a bent wire or an allen key through one to pull the insert out. Its height is engraved two layers deep in the face you see when it is in the pocket, at the bottom, away from the fingertips. It fits both edges of a two-hand plate.",
+    fields: [
+    { key: "insertHeight", label: "Insert height", unit: "mm", min: 0, max: 25, step: 0.5,
+      help: "Edge depth with the insert = edge depth − this. 0 = no insert. It must stay below the rounded rim of the pocket." },
+    { key: "insertHold", label: "Held by", type: "select",
+      options: [["loose", "snug fit only"], ["click", "click: bumps in grooves"], ["magnet", "magnets, 6 × 2 mm"]],
+      help: "Snug fit: nothing else, works with a plate you already printed. Click: bumps on the insert's ends snap into small grooves in the pocket's end walls. Magnets: two 6 × 2 mm magnets glued into the pocket floor and two into the insert (check they attract before gluing). Click and magnets change the plate too, so print it with the same setting." },
+    { key: "insertClear", label: "Fit clearance", unit: "mm", min: 0.1, max: 0.5, step: 0.05,
+      help: "Gap between insert and pocket wall, all round. 0.2 suits most printers; raise it if the insert won't go in." },
   ] },
   { title: "Label",
     note: "On the outer wall of each edge, readable as it faces you while you lift: that edge's hand and the edge depth. With both hands each edge has its own. Letters have 45° sides so they print without overhangs.",
@@ -230,7 +243,7 @@ function drawPlate(svg, m) {
   const Y = (y) => -y;
   svg.setAttribute("viewBox", `${-pad} ${-pl.yMax - pad - 8} ${W + 2 * pad} ${pl.yMax - pl.yMin + 2 * pad + 8}`);
   const ringPath = (loop) => {
-    const r = roundedRing(loop, 0, segmentPlan(loop, 0));
+    const r = loop.ringAt ? loop.ringAt(0, pl.T / 2) : roundedRing(loop, 0, segmentPlan(loop, 0));
     return "M" + r.map((q) => `${X(q.x).toFixed(2)},${Y(q.y).toFixed(2)}`).join("L") + "Z";
   };
   const labels = pl.segs.filter((s) => s.finger).map((s) => {
@@ -252,6 +265,9 @@ function drawPlate(svg, m) {
     ${botLabels}
     <text class="dim-text" x="${W / 2}" y="${Y(pl.yMax) - 3}" text-anchor="middle">top edge: ${who}, step per finger in mm (0 = middle finger)${other}</text>
     <text class="force-text" x="${X(pl.Ww / 2)}" y="${Y(mid)}" text-anchor="middle">fingers press up here ↑</text>
+    ${m.insert ? `<path class="insert-line" d="M${pl.pocketRing(-(params.insertClear + pl.insertWall / 2)).map((q) => `${X(q.x).toFixed(2)},${Y(q.y).toFixed(2)}`).join("L")}Z"/>
+      <text class="dim-text" x="${X(pl.Ww / 2)}" y="${Y(mid) + 6}" text-anchor="middle">insert ${fmt(m.insert.height)} mm: edge ${fmt(m.insert.depthLeft)} mm</text>` : ""}
+    ${(pl.magnets?.spots ?? []).map((q) => `<circle class="insert-line" cx="${X(q.x)}" cy="${Y(q.y)}" r="${pl.magnets.r}"/>`).join("")}
     <clipPath id="plateClip"><path fill-rule="evenodd" clip-rule="evenodd" d="${pl.loops.map(ringPath).join(" ")}"/></clipPath>
     <path id="plateHl" class="hl" d=""/>
     <g id="plateHlRegions" clip-path="url(#plateClip)"></g>`;
@@ -297,6 +313,8 @@ function drawResults(el, m) {
           <tr><td>Filament, estimate (PLA, 1.75 mm)</td><td class="num">≈ ${fmt(m.filament.grams, 0)} g · ${fmt(m.filament.metres, 1)} m</td></tr>
           <tr><td>Chamfer (both faces)</td><td class="num">${fmt(params.chamferLayers * params.layerHeight, 2)} mm</td></tr>
           <tr><td>Mesh</td><td class="num ${m.stats.badEdges ? "bad" : "good"}">${m.stats.triangles} triangles, ${m.stats.badEdges ? "not closed" : "closed"}</td></tr>
+          ${m.insert ? `<tr><td>Insert ${fmt(m.insert.height)} mm (${{ loose: "snug fit", click: "click", magnet: "magnets" }[m.insert.hold]})</td><td class="num">edge ${fmt(m.insert.depthLeft)} mm · ≈ ${fmt(m.insert.filament.grams, 0)} g</td></tr>
+          <tr><td>Insert mesh</td><td class="num ${m.insert.stats.badEdges ? "bad" : "good"}">${m.insert.stats.triangles} triangles, ${m.insert.stats.badEdges ? "not closed" : "closed"}</td></tr>` : ""}
         </table>
       </div>
       <div>
@@ -335,7 +353,7 @@ function renderHighlight() {
   const regionLayer = document.getElementById("plateHlRegions");
   if (regionLayer) regionLayer.innerHTML = "";
   const hl = current && hlKey ? highlightTriangles(current, params, hlKey) : null;
-  viewer.setHighlight(hl);
+  viewer.setHighlight(insertPicked() ? null : hl);
   if (!layer) return;
   if (!hl) { layer.setAttribute("d", ""); return; }
   // Project onto the plate drawing (same mirror as drawPlate): faces become areas, walls lines.
@@ -391,9 +409,23 @@ function download(bytes, name, type) {
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
+// What the export buttons and the 3D view show: the plate, or the insert if there is one.
+const partPick = document.getElementById("partPick");
+const insertPicked = () => partPick.value === "insert" && !!current?.insert;
+const partName = () => (insertPicked() ? `${fileBase()}_insert-${current.insert.height}mm_edge-${current.insert.depthLeft}mm` : fileBase());
+const partMesh = () => (insertPicked() ? current.insert.mesh : current.body);
 function exportOpts() {
-  return { name: fileBase(), body: current.body, modifier: current.modifier, settings: printSettings(params), place: [100, 100] };
+  return { name: partName(), body: partMesh(), modifier: insertPicked() ? null : current.modifier, settings: printSettings(params), place: [100, 100] };
 }
+function showPart() {
+  if (!current) return;
+  partPick.disabled = !current.insert;
+  if (!current.insert) partPick.value = "plate";
+  document.getElementById("partNote").textContent = current.insert ? "" : "Set an insert height (Insert group) to get an insert.";
+  if (insertPicked()) viewer.setMeshes(current.insert.mesh, null, { x: current.size.x, y: current.size.y, z: current.insert.height });
+  else viewer.setMeshes(current.body, current.modifier, current.size);
+}
+partPick.addEventListener("change", () => { showPart(); renderHighlight(); });
 // The Bambu preset set for the chosen printer, at the available nozzle closest to the app's nozzle.
 function bambuPresets() {
   const byNozzle = BAMBU_PRESETS[params.bambuPrinter] ?? Object.values(BAMBU_PRESETS)[0];
@@ -471,7 +503,7 @@ function refresh() {
     status.innerHTML = w.length ? `<ul class="warnings">${w.map((s) => `<li>${s}</li>`).join("")}</ul>` : "";
     drawPlate(document.getElementById("plate"), current);
     drawSection(document.getElementById("section"), current);
-    viewer.setMeshes(current.body, current.modifier, current.size);
+    showPart();
     drawResults(document.getElementById("results"), current);
     renderHighlight();
   });
@@ -483,10 +515,10 @@ const needModel = (fn) => () => {
   if (!current) { document.getElementById("plateStatus").innerHTML = `<p class="bad">Nothing to export yet: these settings can't be built (see above).</p>`; return; }
   fn();
 };
-document.getElementById("dlStl").addEventListener("click", needModel(() => download(stl(current.body, fileBase()), `${fileBase()}.stl`, "model/stl")));
-document.getElementById("dlPrusa").addEventListener("click", needModel(() => download(threeMfPrusa(exportOpts()), `${fileBase()}_prusaslicer.3mf`, "model/3mf")));
-document.getElementById("dlBambu").addEventListener("click", needModel(() => download(threeMfBambu({ ...exportOpts(), presets: bambuPresets() }), `${fileBase()}_bambu.3mf`, "model/3mf")));
-document.getElementById("dlOrca").addEventListener("click", needModel(() => download(threeMfOrca(exportOpts()), `${fileBase()}_orca.3mf`, "model/3mf")));
+document.getElementById("dlStl").addEventListener("click", needModel(() => download(stl(partMesh(), partName()), `${partName()}.stl`, "model/stl")));
+document.getElementById("dlPrusa").addEventListener("click", needModel(() => download(threeMfPrusa(exportOpts()), `${partName()}_prusaslicer.3mf`, "model/3mf")));
+document.getElementById("dlBambu").addEventListener("click", needModel(() => download(threeMfBambu({ ...exportOpts(), presets: bambuPresets() }), `${partName()}_bambu.3mf`, "model/3mf")));
+document.getElementById("dlOrca").addEventListener("click", needModel(() => download(threeMfOrca(exportOpts()), `${partName()}_orca.3mf`, "model/3mf")));
 const bp = document.getElementById("bambuPrinter");
 for (const m of Object.keys(BAMBU_PRESETS)) bp.add(new Option(m.replace("Bambu Lab ", ""), m));
 bp.value = params.bambuPrinter;

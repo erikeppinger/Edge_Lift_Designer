@@ -64,6 +64,10 @@
         <div class="card">
           <h2>Export</h2>
           <div class="buttons">
+            <label class="inline">Part <select id="partPick"><option value="plate">plate</option><option value="insert">insert</option></select></label>
+            <span class="hint" id="partNote"></span>
+          </div>
+          <div class="buttons">
             <button id="dlStl">STL</button>
             <button id="dlPrusa">3MF · PrusaSlicer</button>
             <button id="dlOrca">3MF · OrcaSlicer</button>
@@ -72,7 +76,7 @@
             <label class="inline">Bambu printer <select id="bambuPrinter"></select></label>
             <button id="dlBambu">3MF · Bambu Studio</button>
           </div>
-          <p class="note">The STL is the plain part: slice it however you like. The 3MF files also carry
+          <p class="note">The 3D view shows the part chosen here. The STL is the plain part: slice it however you like. The 3MF files also carry
             layer height, walls, infill and top/bottom layers, plus the denser-infill zones as modifiers if you switch them on.
             PrusaSlicer and OrcaSlicer keep your current printer, nozzle and filament. Bambu Studio only applies the settings
             when the file names its printer presets, so pick your Bambu printer; the nozzle follows the app's nozzle setting.</p>

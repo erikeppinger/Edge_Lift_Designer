@@ -37,7 +37,7 @@ export function highlightTriangles(model, params, key) {
 
   const P = {
     fingersR: ofHand("R"), fingersL: ofHand("L"),
-    unlevel: stepped, stepScale: stepped, stepAngle: stepped, stepRadius: stepped, hands: stepped, hand: stepped,
+    scoop: stepped, unlevel: stepped, stepScale: stepped, stepAngle: stepped, stepRadius: stepped, hands: stepped, hand: stepped,
     sideMargin: (t) => stepped(t) && (t.x < params.sideMargin + 1 || t.x > Ww - params.sideMargin - 1),
     edgeDepth: pocketWall,
     windowHeight: pocketWall,

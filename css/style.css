@@ -249,3 +249,4 @@ button.info::before { content: ""; position: absolute; inset: -8px; border-radiu
 .finger-table th { white-space: nowrap; }
 .info-ref { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--accent); color: var(--accent); font: italic 600 10px/1 Georgia, serif; }
 .ico .t.lbl { font: 700 9px system-ui, sans-serif; letter-spacing: 0.5px; }
+#plate .insert-line { fill: none; stroke: var(--accent); stroke-width: 0.5; stroke-dasharray: 2 1.5; }

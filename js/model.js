@@ -1,7 +1,8 @@
 // Parameters → everything the page and the exporters need. No DOM.
 
 import { buildFrame, strength } from "./frame.js";
-import { meshStats, translate } from "./mesh.js";
+import { meshStats, translate, dropFlat } from "./mesh.js";
+import { buildInsert } from "./insert.js";
 import { roundedRing, segmentPlan, pointInPolygon } from "./geom2d.js";
 
 export function buildModel(p) {
@@ -9,14 +10,23 @@ export function buildModel(p) {
   const { plan } = f;
   // Centre the part on the origin in XY so the slicer's bed position is easy to set.
   const cx = (plan.Ww) / 2, cy = (plan.yMax + plan.yMin) / 2;
-  const body = translate(f.body, -cx, -cy, 0);
+  const body = dropFlat(translate(f.body, -cx, -cy, 0)); // (after centring: flat is judged in the exported coordinates)
   const modifier = f.modifier ? translate(f.modifier, -cx, -cy, 0) : null;
   const stats = meshStats(body);
+  // the insert, centred like the plate
+  const ins = buildInsert(p, plan);
+  let insert = null;
+  if (ins?.mesh) {
+    const mesh = dropFlat(translate(ins.mesh, -cx, -cy, 0)), st = meshStats(mesh);
+    insert = { mesh, stats: st, height: ins.height, hold: ins.hold, depthLeft: p.edgeDepth - ins.height, filament: filamentEstimate(mesh, st.volume, p, 0) };
+  }
+  if (ins) plan.warnings.push(...ins.warnings);
   return {
     plan,
     offset: { x: -cx, y: -cy }, // body = plan coordinates + offset (centred for the slicer)
     body,
     modifier,
+    insert,
     size: plan.size,
     stats,
     strength: strength(p, plan),
