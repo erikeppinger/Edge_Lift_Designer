@@ -16,7 +16,7 @@ const field = (sub, name, key) => {
   return undefined;
 };
 const out = {};
-for (const f of readdirSync(join(dir, "machine")).filter((f) => /^Bambu Lab .* nozzle\.json$/.test(f)).sort()) {
+for (const f of readdirSync(join(dir, "machine")).filter((name) => /^Bambu Lab .* nozzle\.json$/.test(name)).sort()) {
   const name = f.slice(0, -5);
   const model = field("machine", name, "printer_model");
   const nozzle = field("machine", name, "nozzle_diameter")?.[0];

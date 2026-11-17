@@ -8,7 +8,7 @@
 // part stays one closed surface: no overlapping shells for the slicer to merge. A bowed bar is a
 // row of flat facets; the letters follow them.
 
-import { triangulate, dropFlat } from "./mesh.js";
+import { triangulateSafe, dropFlat } from "./mesh.js";
 
 // ---- font: polylines on a 4 × 6 cell (x right, y up), arcs as point lists ----
 const arc = (cx, cy, rx, ry, a0, a1, n = 16) => Array.from({ length: n + 1 }, (_, i) => {
@@ -62,7 +62,6 @@ const GLYPHS = {
 };
 const ADVANCE = { ".": 2, " ": 3, I: 4 }; // others: 4 + 2 (cell + gap), in cell units
 
-export const LABEL_CHARS = Object.keys(GLYPHS).join("");
 export const cleanLabelText = (s) => [...String(s ?? "").toUpperCase()].filter((ch) => ch in GLYPHS).join("").replace(/\s+/g, " ").trim();
 
 // The text on one edge's label: that edge's hand and the edge depth, then the user's own text.
@@ -178,11 +177,6 @@ export function groupLoops(loops) {
   return polys;
 }
 
-// The letters' outline: { polys: [{ outer, holes }], width }.
-export function textOutline(text, size, pen) {
-  const field = textField(text, size, pen);
-  return field ? { polys: groupLoops(contourLoops(field, 0)), width: field.width } : { polys: [], width: 0 };
-}
 
 function inside(p, poly) {
   let c = false;
@@ -377,20 +371,6 @@ export function applyLabel(mesh, { text, path, zRange, size, pen, depth, margin 
     }
     return tris;
   };
-  // The ear clipper can stall on floating-point ties (points exactly on a candidate diagonal). Then
-  // it is tried again on copies rounded to 0.01 µm, then 0.1 µm, then nudged by 1 nm: that only
-  // steers the choice of triangles, the vertices stay where they are.
-  const triangulateSafe = (rings) => {
-    try { return triangulate(rings, pts2); } catch (e) {
-      for (const tweak of [(p) => ({ x: Math.round(p.x * 1e5) / 1e5, y: Math.round(p.y * 1e5) / 1e5 }), (p) => ({ x: Math.round(p.x * 1e4) / 1e4, y: Math.round(p.y * 1e4) / 1e4 }),
-        (p, k) => ({ x: p.x + 1e-6 * Math.sin(k * 12.9898), y: p.y + 1e-6 * Math.cos(k * 78.233) })]) {
-        const q = pts2.slice();
-        for (const r of rings) for (const k of r) q[k] = tweak(pts2[k], k);
-        try { return triangulate(rings, q); } catch { /* next */ }
-      }
-      throw e;
-    }
-  };
   // a flat face at height w from loops of vertex ids (CCW outlines, CW holes, any mix)
   const area2 = (r) => r.reduce((s2, k, i) => { const p = pts2[k], q2 = pts2[r[(i + 1) % r.length]]; return s2 + p.x * q2.y - q2.x * p.y; }, 0);
   const faceOf = (rings, w) => {
@@ -402,7 +382,7 @@ export function applyLabel(mesh, { text, path, zRange, size, pen, depth, margin 
       if (owner) owner.holes.push(hl);
     }
     const tris = [];
-    for (const q2 of polys) tris.push(...refine(triangulateSafe([q2.outer, ...q2.holes]), w));
+    for (const q2 of polys) tris.push(...refine(triangulateSafe([q2.outer, ...q2.holes], pts2), w));
     return tris;
   };
 

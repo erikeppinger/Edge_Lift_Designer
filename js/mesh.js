@@ -3,7 +3,7 @@
 // `pocketBody` joins a closed slab and a pocketed slab. Also triangulation, welding and checks.
 // No DOM.
 
-import { roundedRing, segmentPlan, signedArea } from "./geom2d.js";
+import { roundedRing, segmentPlan } from "./geom2d.js";
 
 // Ear clipping of one simple polygon given as indices into pts (counter-clockwise).
 function earClip(idx, pts, out) {
@@ -350,4 +350,3 @@ export function meshStats(mesh) {
   return { triangles: I.length / 3, vertices: P.length / 3, volume: vol, badEdges: open };
 }
 
-export { signedArea };

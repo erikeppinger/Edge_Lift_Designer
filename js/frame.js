@@ -109,8 +109,8 @@ export function pocketOffsetter(win, Ww, maxOffset = 0, { warp = null, fine = nu
     pts = dense;
   }
   // normals: the outline runs counter-clockwise around the pocket, outwards is to the right
-  const normals = (pts) => pts.map((q, i) => {
-    const n = pts.length, p = pts[(i - 1 + n) % n], r = pts[(i + 1) % n];
+  const normals = (ring) => ring.map((q, i) => {
+    const n = ring.length, p = ring[(i - 1 + n) % n], r = ring[(i + 1) % n];
     const d1 = Math.hypot(q.x - p.x, q.y - p.y), d2 = Math.hypot(r.x - q.x, r.y - q.y);
     const tx = (q.x - p.x) / d1 + (r.x - q.x) / d2, ty = (q.y - p.y) / d1 + (r.y - q.y) / d2, l = Math.hypot(tx, ty) || 1;
     return { x: ty / l, y: -tx / l };
@@ -302,8 +302,8 @@ export function framePlan(p) {
     if (p.labelMode === "off") return 0;
     const text = labelText(p, hand), T0 = p.edgeDepth + p.floorThick, c0 = p.chamferLayers * p.layerHeight;
     const pen = Math.max(2.25 * (p.nozzle ?? 0.4), 0.15 * p.labelSize);
-    const cap = Math.min(p.labelSize, (T0 - 2 * c0 - 3 - pen) / 1.1);
-    const f = text && cap > 0 ? textField(text, cap, pen) : null;
+    const capH = Math.min(p.labelSize, (T0 - 2 * c0 - 3 - pen) / 1.1);
+    const f = text && capH > 0 ? textField(text, capH, pen) : null;
     return f ? f.width / 2 + 3 : 0;
   };
   const panels = {}; // half widths of the flat label panels actually made, by bar
@@ -449,7 +449,7 @@ export function framePlan(p) {
   }
   // (circles are turned a little, each differently: no two points level with each other, as such
   // ties stall the triangulation)
-  const circle = (q, rad, ccw) => { const pts = Array.from({ length: 32 }, (_, i) => { const a = ((ccw ? i : -i) * Math.PI) / 16 + 0.3 + q.x * 0.013; return { x: q.x + rad * Math.cos(a), y: q.y + rad * Math.sin(a), r: 0 }; }); pts.ringAt = () => pts; return pts; };
+  const circle = (q, radius, ccw) => { const pts = Array.from({ length: 32 }, (_, i) => { const a = ((ccw ? i : -i) * Math.PI) / 16 + 0.3 + q.x * 0.013; return { x: q.x + radius * Math.cos(a), y: q.y + radius * Math.sin(a), r: 0 }; }); pts.ringAt = () => pts; return pts; };
   const winLoop = reversed(win);
   winLoop.ringAt = (off, z) => pocketRing(off, click?.w, groove ? groove(z) : 0);
   const pocketed = [outer, winLoop, ...holeLoops];
@@ -502,8 +502,8 @@ function ringsAt(levels, k) {
 }
 function crossings(a, b, self) {
   const o = (p, q, r) => { const v = (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x); return Math.abs(v) < 1e-9 ? 0 : v; }; // touching ≠ crossing
-  const box = (r) => r.map((p, i) => { const q = r[(i + 1) % r.length]; return [p, q, Math.min(p.x, q.x), Math.max(p.x, q.x), Math.min(p.y, q.y), Math.max(p.y, q.y)]; });
-  const A = box(a), B = self ? A : box(b);
+  const segBoxes = (r) => r.map((p, i) => { const q = r[(i + 1) % r.length]; return [p, q, Math.min(p.x, q.x), Math.max(p.x, q.x), Math.min(p.y, q.y), Math.max(p.y, q.y)]; });
+  const A = segBoxes(a), B = self ? A : segBoxes(b);
   for (let i = 0; i < A.length; i++) {
     const [p, q, ax0, ax1, ay0, ay1] = A[i];
     for (let j = self ? i + 2 : 0; j < B.length; j++) {
@@ -555,7 +555,7 @@ export function buildFrame(p) {
   } catch (e) {
     if (!/Triangulation/.test(e.message)) throw e;
     // the outline touches itself somewhere the collision check cannot see (a pinch, not a crossing)
-    throw new Error("the pocket crosses itself where its borders come close: make the pocket higher, the steps or the front radius smaller.");
+    throw new Error("the pocket crosses itself where its borders come close: make the pocket higher, the steps or the front radius smaller.", { cause: e });
   }
   // labels: one on the outer wall of each edge bar, for that edge's hand
   plan.labels = [];

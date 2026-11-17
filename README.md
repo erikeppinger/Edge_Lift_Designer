@@ -50,6 +50,7 @@ then open http://localhost:8095. Any static file server works (ES modules need `
 ```
 npm test        # unit tests (geometry, hand, photo measuring, syntax of every module)
 npm run fuzz    # builds 400 random and extreme designs, reports crashes and open meshes
+npm run lint    # ESLint (after npm install; dev tools only, the site has no dependencies)
 node tools/slice-check.mjs out   # exports cases and slices them with the PrusaSlicer CLI
 ```
 
