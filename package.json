@@ -2,11 +2,11 @@
   "name": "edge-lift-designer",
   "private": true,
   "type": "module",
-  "description": "Browser tool that designs a 3D-printable finger-strength lift edge from hand measurements and exports STL / 3MF.",
+  "description": "Browser tools that design 3D-printable finger-strength trainers (unlevel lift edge, finger pocket block, talon grip) and export STL / 3MF.",
   "scripts": {
     "start": "node tools/serve.mjs 8095",
     "test": "node --test \"tests/*.test.mjs\"",
-    "fuzz": "node tools/fuzz.mjs 400",
+    "fuzz": "node tools/fuzz.mjs 400 && node tools/fuzz-tools.mjs 300",
     "lint": "eslint js tools tests"
   },
   "devDependencies": {

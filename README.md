@@ -13,6 +13,23 @@ lift-block layout: a rounded frame, printed pocket-up, with cord holes in the si
 
 Everything runs in your browser. Measurements and photos never leave your device.
 
+Two smaller tools sit next to it (menu at the top of the page):
+
+- **[Finger pocket](https://erikeppinger.github.io/Edge_Lift_Designer/pocket.html)**: a mono, duo or
+  three-finger pocket block on a cord. The width follows the finger widths measured on the edge
+  page; the pocket is blind (a floor stops the fingertips, like a hangboard pocket) or goes right
+  through, with a rounded rim, a rounded bottom and a cord hole at the narrow end. A raised or
+  engraved label on the bar names the fingers and the depth (e.g. MR 18).
+- **[Talon grip](https://erikeppinger.github.io/Edge_Lift_Designer/talon.html)**: a round grip for
+  the open-hand claw (lumbricals): the fingertips spread over a dome that narrows towards the load.
+  Start from the tapered talon grip or a printable ball and set diameter, height, side taper and
+  shoulder radius; the cord runs up through the middle to a knot pocket at the top. The diameter
+  and taper are engraved in the foot (e.g. 101 T11).
+
+Both print without supports (every overhang 45° or less, round rims printed as round-then-45°
+fillets on the bed side), check their walls and give a simple strength estimate. As on the edge
+page, hovering over a control shows the faces it changes.
+
 ## Features
 
 - **Hand measurement**: type the values in, or take them from a photo with a ruler in it
@@ -49,9 +66,9 @@ then open http://localhost:8095. Any static file server works (ES modules need `
 
 ```
 npm test        # unit tests (geometry, hand, photo measuring, syntax of every module)
-npm run fuzz    # builds 400 random and extreme designs, reports crashes and open meshes
+npm run fuzz    # random and extreme designs of all three tools: crashes, open meshes, flat triangles
 npm run lint    # ESLint (after npm install; dev tools only, the site has no dependencies)
-node tools/slice-check.mjs out   # exports cases and slices them with the PrusaSlicer CLI
+node tools/slice-check.mjs out   # exports cases of all three tools and slices them with PrusaSlicer
 ```
 
 `tools/bambu-presets.mjs` regenerates `js/bambu-presets.js` from a local Bambu Studio install.
@@ -70,6 +87,9 @@ more evenly is still thin, so treat it as a training option, not a proven fix.
   [Ergo Block](https://makerworld.com/en/models/1241056-ergo-block-unlevel-edge-portable-hangboard)
   by 3D_Climber on MakerWorld (sized models in fixed hand sizes). This tool generates its own
   geometry from your measurements; no files of the Ergo Block are included.
+- Talon grip default shape: Erik Eppinger's
+  [Talon Grip – Lumbrical Trainer](https://www.printables.com/model/1391706-talon-grip-lumbrical-trainer) (2025, on Printables), ⌀100.8 × 79.9 mm with a
+  32.5 mm shoulder radius.
 - Hand detection: [MediaPipe](https://github.com/google-ai-edge/mediapipe) tasks-vision and Hand
   Landmarker model (Apache-2.0), vendored in `vendor/mediapipe`.
 

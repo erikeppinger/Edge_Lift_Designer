@@ -8,6 +8,11 @@ import { DEFAULTS } from "../js/frame.js";
 import { buildModel, printSettings } from "../js/model.js";
 import { stl, threeMfPrusa, threeMfBambu, threeMfOrca } from "../js/export.js";
 import { BAMBU_PRESETS } from "../js/bambu-presets.js";
+import { buildPocket, POCKET_DEFAULTS } from "../js/pocket.js";
+import { buildTalon, TALON_DEFAULTS, TALON_SHAPES } from "../js/talon.js";
+
+// the other tools: [defaults, builder]
+const TOOLS = { edge: [DEFAULTS, buildModel], pocket: [POCKET_DEFAULTS, buildPocket], talon: [TALON_DEFAULTS, buildTalon] };
 
 const [out = "slice-check", nArg = "6", prusa = "C:/Program Files/Prusa3D/PrusaSlicer/prusa-slicer-console.exe"] = process.argv.slice(2);
 mkdirSync(out, { recursive: true });
@@ -34,6 +39,13 @@ const cases = [
   ["label-engraved", { labelMode: "engraved", labelText: "TEST", labelDepth: 1 }],
   ["label-two-hands", { hands: 2, labelSize: 12, labelDepth: 1.2 }],
   ["wide-hand", { wIndexR: 30, wMiddleR: 30, wRingR: 30, wLittleR: 30, sideMargin: 20 }],
+  ["pocket-blind", {}, "pocket"],
+  ["pocket-through", { style: "through" }, "pocket"],
+  ["pocket-mono", { fingerSet: "middle", pocketWidth: 22, pocketHeight: 20, pocketCorner: 10, floorRound: 8 }, "pocket"],
+  ["pocket-three", { fingerSet: "index+middle+ring", pocketWidth: 61, depth: 12, rimRadius: 6, sideWall: 12 }, "pocket"],
+  ["talon", {}, "talon"],
+  ["talon-ball", TALON_SHAPES.ball, "talon"],
+  ["talon-steep", { taper: 30, knotDia: 0 }, "talon"],
 ];
 for (let i = 0; i < Number(nArg); i++) {
   const p = {};
@@ -120,11 +132,12 @@ const runPrusa = (args) => {
   catch (e) { return { ok: false, out: `${e.stdout ?? ""}${e.stderr ?? ""}`.trim().split("\n").slice(-3).join(" | ") }; }
 };
 let failures = 0;
-for (const [name, v] of cases) {
-  const p = { ...DEFAULTS, ...v };
+for (const [name, v, tool = "edge"] of cases) {
+  const [defaults, build] = TOOLS[tool];
+  const p = { ...defaults, ...v };
   let m;
-  try { m = buildModel(p); } catch (e) { console.log(`${name}: refused – ${e.message.slice(0, 80)}`); continue; }
-  const opts = { name, body: m.body, modifier: m.modifier, settings: printSettings(p), place: [100, 100] };
+  try { m = build(p); } catch (e) { console.log(`${name}: refused – ${e.message.slice(0, 80)}`); continue; }
+  const opts = { name, body: m.body, modifier: m.modifier ?? null, settings: printSettings(p), place: [100, 100] };
   const files = {
     stl: [join(out, `${name}.stl`), stl(m.body, name)],
     prusa: [join(out, `${name}_prusa.3mf`), threeMfPrusa(opts)],

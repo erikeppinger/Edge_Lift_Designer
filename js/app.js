@@ -53,7 +53,7 @@ const GROUPS = [
   ] },
   { title: "Cord", fields: [
     { key: "slotShape", label: "Hole shape", type: "select",
-      options: [["auto", "auto (teardrop with one edge, lens with two)"], ["teardrop", "teardrop (one-sided)"], ["lens", "lens (two-sided)"], ["plain", "plain rounded slot"]],
+      options: [["auto", "auto: teardrop for one edge, lens for two"], ["teardrop", "teardrop (one-sided)"], ["lens", "lens (two-sided)"], ["plain", "plain rounded slot"]],
       help: "Teardrop: the narrow end points to the load, the cord jams there. Lens: pointed at both ends, for a plate used either way up." },
     { key: "cordDia", label: "Cord diameter", unit: "mm", min: 3, max: 12, step: 0.5 },
     { key: "slotLength", label: "Hole length", unit: "mm", min: 12, max: 60, step: 0.5 },
@@ -139,7 +139,7 @@ function buildControls(root, photo) {
     fs.append(det);
     for (const f of g.fields) {
       const row = document.createElement("div");
-      row.className = "field" + (f.type === "check" ? " check" : "");
+      row.className = "field" + (f.type === "check" ? " check" : f.type === "select" ? " sel" : "");
       const id = `f-${f.key}`;
       if (f.type === "fingers") {
         row.className = "field fingers";

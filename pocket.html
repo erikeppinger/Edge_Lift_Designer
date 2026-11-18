@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Finger Pocket Designer</title>
+  <meta name="description" content="Design a 3D-printable mono, duo or three-finger pocket block sized to your fingers. Exports STL and 3MF for PrusaSlicer, Bambu Studio and OrcaSlicer. Everything stays on your device.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header>
+    <h1>Finger Pocket Designer</h1>
+    <p class="sub">A mono, duo or three-finger pocket block for lifts and hangs, sized to your fingers. Your measurements stay on this device.</p>
+    <label class="layout-pick">Layout <select id="layoutPick">
+      <option value="auto">auto</option><option value="cols">columns</option><option value="rows">rows</option>
+    </select></label>
+    <nav class="tools" aria-label="Tools"><a href="./">Unlevel edge</a><a href="pocket.html" aria-current="page">Finger pocket</a><a href="talon.html">Talon grip</a></nav>
+  </header>
+
+  <main>
+    <section id="controls" aria-label="Design parameters">
+      <details class="card start" open>
+        <summary>Start here</summary>
+        <ol>
+          <li><b>Pick the fingers</b> (Fingers): the width follows their widths from the Unlevel edge page's hand table; you can still type a width in (Pocket).</li>
+          <li><b>Set the pocket</b>: blind (a floor stops the fingertips, like a hangboard pocket) or right through; depth and rim radius like a hangboard pocket.</li>
+          <li><b>Check the strength</b> (below the 3D view): safety factor at least 2 at your heaviest pull.</li>
+          <li><b>Export</b> and print it flat, no supports. Hang it from the cord; the fingers go in from the rounded face and pull on the bar.</li>
+        </ol>
+      </details>
+    </section>
+
+    <section id="views">
+      <div id="stage">
+        <div class="card">
+          <div class="card-head">
+            <h2>Block</h2>
+            <span class="hint">front as it hangs from the cord, and a cut through the middle (thickness across, bed on the left)</span>
+          </div>
+          <svg id="plate" role="img" aria-label="The pocket block from the front and in section"></svg>
+          <div id="plateStatus" class="plate-status" aria-live="polite"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2>Print preview</h2>
+            <span class="hint">as printed: flat on the bed · drag to turn, wheel to zoom</span>
+          </div>
+          <canvas id="view3d" aria-label="3D preview of the part on the print bed"></canvas>
+        </div>
+      </div>
+      <div id="details">
+        <div class="card" id="results"></div>
+
+        <div class="card">
+          <h2>Export</h2>
+          <div class="buttons">
+            <button id="dlStl">STL</button>
+            <button id="dlPrusa">3MF · PrusaSlicer</button>
+            <button id="dlOrca">3MF · OrcaSlicer</button>
+          </div>
+          <div class="buttons">
+            <label class="inline">Bambu printer <select id="bambuPrinter"></select></label>
+            <button id="dlBambu">3MF · Bambu Studio</button>
+          </div>
+          <p class="note">The STL is the plain part. The 3MF files also carry layer height, walls, infill and top/bottom layers.
+            PrusaSlicer and OrcaSlicer keep your current printer, nozzle and filament. Bambu Studio only applies the settings
+            when the file names its printer presets, so pick your Bambu printer.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="js/pocket-page.js"></script>
+</body>
+</html>

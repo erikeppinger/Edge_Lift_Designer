@@ -250,3 +250,17 @@ button.info::before { content: ""; position: absolute; inset: -8px; border-radiu
 .info-ref { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--accent); color: var(--accent); font: italic 600 10px/1 Georgia, serif; }
 .ico .t.lbl { font: 700 9px system-ui, sans-serif; letter-spacing: 0.5px; }
 #plate .insert-line { fill: none; stroke: var(--accent); stroke-width: 0.5; stroke-dasharray: 2 1.5; }
+
+/* tool menu in the header: one page per tool */
+nav.tools { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+nav.tools a { padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); color: var(--text); text-decoration: none; font-size: 0.9rem; background: var(--card); }
+nav.tools a:hover { border-color: var(--accent); }
+nav.tools a[aria-current="page"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+
+/* a select sits on its own line under its label: the option texts are long */
+.field.sel { grid-template-columns: minmax(0, 1fr); }
+.field.sel select { grid-column: 1; min-width: 0; }
+#plate .hl-line { fill: none; stroke: var(--accent); stroke-width: 0.9; stroke-linecap: round; pointer-events: none; }
+#plate #hlLayer .hl { stroke: none; }
+#plate #hlLayer .hl-line { stroke-width: 0.7; stroke-linejoin: round; }
+.field .help a { color: var(--accent); }

@@ -408,7 +408,9 @@ export function applyLabel(mesh, { text, path, zRange, size, pen, depth, margin 
   for (const [i, [u, v, w]] of uvw) pos.set(place(u, v, w), 3 * i);
   const bu = levels[0].flat().map((x) => x[0]), bv = levels[0].flat().map((x) => x[1]);
   const box = [Math.min(...bu), Math.max(...bu), Math.min(...bv), Math.max(...bv)];
-  // for highlighting: is a point within the letters' box, at most the relief away from the wall?
+  // for highlighting: is a point on the letters themselves, i.e. off the wall (their sides and tops
+  // or floors; the wall around them is triangulated with long slivers that would show as spikes),
+  // at most the relief away from it, within the letters' box?
   const contains = (x, y, z) => {
     let best = null;
     for (let i = 0; i < n; i++) {
@@ -417,7 +419,7 @@ export function applyLabel(mesh, { text, path, zRange, size, pen, depth, margin 
       const d = Math.hypot(x - ax - t * dx, y - ay - t * dy);
       if (!best || d < best.d) best = { d, s: S[i] + t * (S[i + 1] - S[i]) };
     }
-    return best.d <= Math.abs(depth) + 0.05 && best.s > box[0] - 0.3 && best.s < box[1] + 0.3 && z > box[2] - 0.3 && z < box[3] + 0.3;
+    return best.d > 0.01 && best.d <= Math.abs(depth) + 0.05 && best.s > box[0] - 0.3 && best.s < box[1] + 0.3 && z > box[2] - 0.3 && z < box[3] + 0.3;
   };
   return { mesh: { positions: pos, indices: dropFlat({ positions: pos, indices: idx }).indices }, box, size: cap, contains };
 }
